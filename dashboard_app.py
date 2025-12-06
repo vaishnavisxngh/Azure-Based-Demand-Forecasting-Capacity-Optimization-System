@@ -24,80 +24,160 @@ st.set_page_config(
 BASE_URL = "http://localhost:5000/api"
 
 # -----------------------------------------------------------------------------
-# GLOBAL THEME CSS (Azure gradient + new filter style for Data Explorer)
+# GLOBAL THEME CSS (NEW SIDEBAR + PROFESSIONAL THEME)
 # -----------------------------------------------------------------------------
 st.markdown(
     """
 <style>
-/* App background */
+/* ========== GLOBAL LAYOUT ========== */
+
 [data-testid="stAppViewContainer"] {
-    background: radial-gradient(circle at top left, #0f172a 0, #020617 45%, #020617 100%);
+    background: radial-gradient(circle at top left, #020617 0, #020617 45%, #020617 100%);
 }
 
-/* Remove wide default padding */
 .block-container {
     padding-top: 1.5rem;
     padding-bottom: 2rem;
+    padding-left: 1.8rem;
+    padding-right: 1.8rem;
 }
 
-/* Main header */
+html, body, [data-testid="stAppViewContainer"] {
+    font-family: -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
+}
+
+h1, h2, h3, h4 {
+    color: #e5e7eb !important;
+    letter-spacing: 0.02em;
+}
+h3, h4 { font-weight: 600 !important; }
+
+/* Scrollbar */
+*::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+*::-webkit-scrollbar-track {
+    background: rgba(15,23,42,0.8);
+}
+*::-webkit-scrollbar-thumb {
+    background: rgba(148,163,184,0.85);
+    border-radius: 999px;
+}
+*::-webkit-scrollbar-thumb:hover {
+    background: rgba(148,163,184,1);
+}
+
+/* ========== MAIN HEADER ========== */
+
 .main-header {
-    background: linear-gradient(135deg, #2563eb 0%, #0ea5e9 40%, #22c55e 100%);
+    background: linear-gradient(120deg, #2563eb 0%, #0ea5e9 40%, #22c55e 100%);
     color: white;
-    padding: 1.2rem 1.6rem;
+    padding: 1rem 1.4rem;
     border-radius: 1rem;
-    box-shadow: 0 14px 30px rgba(15,23,42,0.45);
-    margin-bottom: 1.5rem;
-    border: 1px solid rgba(255,255,255,0.2);
+    box-shadow: 0 16px 40px rgba(15,23,42,0.6);
+    margin-bottom: 1.2rem;
+    border: 1px solid rgba(255,255,255,0.25);
 }
 .main-header h1 {
     margin: 0;
     font-size: 1.8rem;
-    letter-spacing: 0.03em;
 }
 .main-header p {
-    margin: 0.3rem 0 0;
+    margin: 0.25rem 0 0;
     font-size: 0.95rem;
+    opacity: 0.95;
+}
+
+/* -------------------- KPI METRIC CARDS – NEW RECTANGULAR STYLE -------------------- */
+
+.metric-pill {
+    position: relative;
+    background: linear-gradient(135deg, #020617 0%, #020617 40%, #111827 100%);
+    border-radius: 0.6rem;                      /* soft rectangle, NOT a pill */
+    padding: 0.8rem 1rem 0.85rem 1.2rem;
+    border: 1px solid rgba(30,64,175,0.5);
+    box-shadow: 0 12px 30px rgba(15,23,42,0.9);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 0.18rem;
+    overflow: hidden;
+    transition: transform 0.12s ease-out,
+                box-shadow 0.12s ease-out,
+                border-color 0.12s ease-out;
+}
+
+/* slim vertical color bar on the left */
+.metric-pill::before {
+    content: "";
+    position: absolute;
+    top: 10px;
+    bottom: 10px;
+    left: 0;
+    width: 4px;
+    border-radius: 999px;
+    background: linear-gradient(180deg, #22c55e, #0ea5e9, #2563eb);
     opacity: 0.9;
 }
 
-/* Cards */
-.metric-pill {
-    background: rgba(15,23,42,0.85);
-    border-radius: 0.9rem;
-    padding: 1rem 1.1rem;
-    border: 1px solid rgba(148,163,184,0.6);
-    box-shadow: 0 8px 24px rgba(15,23,42,0.7);
-    backdrop-filter: blur(18px);
+/* hover effect */
+.metric-pill:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 18px 42px rgba(15,23,42,0.95);
+    border-color: #38bdf8;
 }
+
+/* label text: "Peak CPU", "Max Storage", etc. */
 .metric-pill h4 {
-    color: #e5e7eb;
-    font-size: 0.8rem;
+    color: #9ca3af;
+    font-size: 0.78rem;
     text-transform: uppercase;
-    letter-spacing: 0.12em;
-    margin-bottom: 0.35rem;
+    letter-spacing: 0.13em;
+    margin: 0 0 0.05rem 0;
 }
+
+/* main value: "99.0%", "1,995.0 GB" */
 .metric-pill h2 {
     color: #f9fafb;
-    font-size: 1.35rem;
-    margin-bottom: 0.25rem;
+    font-size: 1.45rem;
+    margin: 0;
 }
+
+/* subtext: "+24.3% above avg" */
 .metric-pill small {
     color: #94a3b8;
     font-size: 0.75rem;
+    margin: 0;
 }
 
-/* Section containers */
+
+/* ========== SECTION CARDS ========== */
+
 .section-card {
-    background: rgba(15,23,42,0.9);
+    background: radial-gradient(circle at top left, #0b1120 0, #020617 60%);
     border-radius: 1rem;
     padding: 1rem 1.2rem 1.1rem 1.2rem;
     border: 1px solid rgba(51,65,85,0.9);
-    box-shadow: 0 10px 26px rgba(15,23,42,0.9);
+    box-shadow: 0 14px 38px rgba(15,23,42,0.95);
     margin-top: 0.6rem;
+    position: relative;
+}
+.section-card::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(135deg, rgba(37,99,235,0.8), rgba(14,165,233,0.35), rgba(34,197,94,0.4));
+    mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    mask-composite: exclude;
+    opacity: 0.15;
+    pointer-events: none;
 }
 
-/* Data Explorer special styling */
+/* ========== DATA EXPLORER ========== */
+
 .data-explorer-shell {
     background: radial-gradient(circle at top left, #1e293b 0, #020617 55%);
     border-radius: 1.1rem;
@@ -123,7 +203,7 @@ st.markdown(
 
 /* Data Explorer filter chips */
 .de-filter-chip {
-    background: rgba(15,23,42,0.9);
+    background: rgba(15,23,42,0.95);
     border-radius: 999px;
     padding: 0.45rem 0.8rem;
     border: 1px solid rgba(148,163,184,0.7);
@@ -143,50 +223,144 @@ st.markdown(
     color: #6b7280;
 }
 
-/* Sidebar nav buttons */
-.sidebar-nav-button > button {
-    width: 100%;
-    justify-content: flex-start;
-    border-radius: 999px;
-    border: 1px solid rgba(148,163,184,0.6);
-    background: linear-gradient(90deg, rgba(15,23,42,0.95), rgba(15,23,42,0.9));
-    color: #e5e7eb;
-    padding: 0.5rem 0.9rem;
-    font-size: 0.85rem;
-    margin-bottom: 0.3rem;
-    cursor: pointer;
-}
-.sidebar-nav-button > button:hover {
-    border-color: #38bdf8;
-    box-shadow: 0 0 0 1px rgba(56,189,248,0.45);
-}
-.sidebar-nav-button-active > button {
-    background: linear-gradient(90deg, #2563eb, #0ea5e9);
-    color: white !important;
-    border-color: transparent;
-    box-shadow: 0 6px 18px rgba(37,99,235,0.8);
-}
+/* ========== TABLES ========== */
 
-/* Generic titles */
-h3, h4 {
-    color: #e5e7eb !important;
-}
-
-/* Tables */
 [data-testid="stDataFrame"] {
     border-radius: 0.8rem;
     border: 1px solid rgba(55,65,81,0.8);
     overflow: hidden;
 }
 
-/* Make everything interactive look clickable */
+/* ===== STACK SIDEBAR BUTTONS WITH ZERO GAP ===== */
+
+/* Remove vertical margin that Streamlit adds around each widget */
+aside[data-testid="stSidebar"] .element-container {
+    margin-bottom: 0 !important;
+    padding-bottom: 0 !important;
+}
+
+/* Remove margin around stButton wrapper */
+aside[data-testid="stSidebar"] .stButton {
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
+/* Actual sidebar buttons: full-width, tightly stacked */
+aside[data-testid="stSidebar"] .stButton > button {
+    width: 100%;
+    margin: 0 !important;                 /* no space between buttons */
+    border-radius: 0;                     /* flat edges so they touch */
+    border: none;
+    border-bottom: 1px solid rgba(30,64,175,0.9);  /* optional thin divider */
+    background: rgba(15,23,42,0.96);
+    color: #cbd5e1;
+    text-align: left;
+    padding: 0.55rem 0.9rem;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    box-shadow: none !important;
+    cursor: pointer;
+}
+
+/* Hover effect */
+aside[data-testid="stSidebar"] .stButton > button:hover {
+    background: rgba(30,64,175,0.95);
+    color: #f9fafb;
+}
+
+
+/* ========== INPUTS & CURSORS ========== */
+
 .stDownloadButton button,
 .stButton button,
-.stMultiSelect,
-.stSelectbox,
+.stMultiSelect > div,
+.stSelectbox > div,
 .stTextInput input,
-[data-testid="stSlider"] * {
+.stNumberInput input,
+[data-testid="stSlider"] *,
+div[role="radiogroup"] label,
+div[role="checkbox"],
+label {
     cursor: pointer !important;
+}
+
+.stTextInput input,
+.stNumberInput input,
+.stSelectbox > div,
+.stMultiSelect > div {
+    border-radius: 0.6rem !important;
+    border: 1px solid rgba(55,65,81,0.9) !important;
+    background-color: rgba(15,23,42,0.95) !important;
+    color: #e5e7eb !important;
+    box-shadow: 0 8px 24px rgba(15,23,42,0.9);
+    font-size: 0.86rem;
+}
+.stTextInput input:focus,
+.stNumberInput input:focus,
+.stSelectbox > div:focus-within,
+.stMultiSelect > div:focus-within {
+    border-color: #38bdf8 !important;
+    box-shadow: 0 0 0 1px rgba(56,189,248,0.6);
+}
+
+/* Buttons (generic) */
+.stButton>button, .stDownloadButton>button {
+    border-radius: 999px;
+    border: 1px solid rgba(148,163,184,0.7);
+    background: linear-gradient(135deg, #1f2937, #0f172a);
+    color: #e5e7eb;
+    font-size: 0.86rem;
+    padding: 0.35rem 0.95rem;
+    box-shadow: 0 10px 26px rgba(15,23,42,0.95);
+    transition: transform 0.08s ease-out,
+                box-shadow 0.08s ease-out,
+                border-color 0.08s ease-out,
+                background 0.08s ease-out;
+}
+.stButton>button:hover, .stDownloadButton>button:hover {
+    border-color: #38bdf8;
+    background: linear-gradient(135deg, #1d4ed8, #0ea5e9);
+    color: #f9fafb;
+    transform: translateY(-1px);
+    box-shadow: 0 14px 40px rgba(15,23,42,0.95);
+}
+
+/* Chat input */
+[data-testid="stChatInput"] textarea {
+    border-radius: 0.8rem !important;
+    background-color: rgba(15,23,42,0.96) !important;
+    border: 1px solid rgba(55,65,81,0.9) !important;
+    color: #e5e7eb !important;
+    box-shadow: 0 12px 30px rgba(15,23,42,0.95);
+}
+[data-testid="stChatInput"] textarea:focus {
+    border-color: #38bdf8 !important;
+    box-shadow: 0 0 0 1px rgba(56,189,248,0.6);
+}
+
+/* ========== FINAL OVERRIDE: REMOVE GAPS BETWEEN SIDEBAR BUTTONS ========== */
+
+/* Remove the vertical margin that Streamlit adds around each widget */
+aside[data-testid="stSidebar"] .element-container {
+    margin-bottom: 0 !important;
+    padding-bottom: 0 !important;
+}
+
+/* Remove margin on the stButton wrapper itself */
+aside[data-testid="stSidebar"] .stButton {
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
+/* Make sidebar buttons fully stacked with no visible gap */
+aside[data-testid="stSidebar"] .stButton > button {
+    width: 100%;
+    margin: 0 !important;             /* no top/bottom space */
+    border-radius: 0;                 /* so they touch perfectly; remove if you want pills */
+    border: none;
+    border-bottom: 1px solid rgba(30,64,175,0.9);  /* optional thin divider line */
+    display: block;
 }
 </style>
 """,
@@ -242,7 +416,7 @@ def load_raw_data():
 
 
 # -----------------------------------------------------------------------------
-# SIDEBAR NAVIGATION (BUTTONS, NOT RADIO)
+# SIDEBAR NAVIGATION (STACKED BUTTONS, NO GAP)
 # -----------------------------------------------------------------------------
 PAGES = [
     "Overview",
@@ -254,28 +428,11 @@ PAGES = [
     "Capacity Planning",
     "Multi-Region Compare",
     "Alerts",
-    "Chatbot",  # 👈 new page
+    "Chatbot",
 ]
-
 
 if "active_page" not in st.session_state:
     st.session_state["active_page"] = "Overview"
-
-
-def nav_button(label: str, icon: str):
-    """Render a nav button and update active page if clicked."""
-    cls = (
-        "sidebar-nav-button-active"
-        if st.session_state["active_page"] == label
-        else "sidebar-nav-button"
-    )
-    with st.container():
-        st.markdown(f'<div class="{cls}">', unsafe_allow_html=True)
-        clicked = st.button(f"{icon}  {label}", key=f"nav_{label}")
-        st.markdown("</div>", unsafe_allow_html=True)
-    if clicked:
-        st.session_state["active_page"] = label
-
 
 with st.sidebar:
     st.markdown("### ☁️ Azure Demand Dashboard")
@@ -291,9 +448,15 @@ with st.sidebar:
         ("Capacity Planning", "🏗️"),
         ("Multi-Region Compare", "🧭"),
         ("Alerts", "🚨"),
-        ("Chatbot", "💬"),  # 👈 new
+        ("Chatbot", "💬"),
     ]:
-        nav_button(label, icon)
+        # Show an indicator on the active page
+        btn_label = f"{icon}  {label}"
+        if st.button(btn_label, key=f"nav_{label}", use_container_width=True):
+            st.session_state["active_page"] = label
+
+active_page = st.session_state["active_page"]
+
 
 
 # -----------------------------------------------------------------------------
@@ -760,7 +923,7 @@ elif active_page == "Regional":
         top_region_storage = agg.sort_values("avg_storage", ascending=False).iloc[0]
         top_region_users = agg.sort_values("avg_users", ascending=False).iloc[0]
 
-        # KPI row similar to old style
+        # KPI row
         kc1, kc2, kc3 = st.columns(3)
         with kc1:
             st.markdown('<div class="metric-pill">', unsafe_allow_html=True)
@@ -843,7 +1006,6 @@ elif active_page == "Regional":
             )
 
     st.markdown("</div>", unsafe_allow_html=True)
-
 
 # -----------------------------------------------------------------------------
 # PAGE: RESOURCES
@@ -1038,7 +1200,6 @@ elif active_page == "User Activity":
             c1, c2 = st.columns([1.6, 1.4])
 
             with c1:
-                # User trend (line)
                 trend = (
                     df.groupby("date")["users_active"]
                     .sum()
@@ -1055,7 +1216,6 @@ elif active_page == "User Activity":
                 st.plotly_chart(fig1, width="stretch")
 
             with c2:
-                # Top regions by avg users (bar)
                 reg_users = (
                     df.groupby("region")["users_active"]
                     .mean()
@@ -1075,7 +1235,6 @@ elif active_page == "User Activity":
 
             st.markdown("")
 
-            # ----- Engagement vs Load (scatter) + spikes table -----
             lc1, lc2 = st.columns([1.4, 1.6])
 
             with lc1:
@@ -1107,7 +1266,6 @@ elif active_page == "User Activity":
                     key="ua_spikes_dl",
                 )
 
-            # Extra: download filtered slice
             make_download_button(
                 df.drop(columns=["weekday"], errors="ignore"),
                 label="⬇️ Download filtered user activity slice",
@@ -1116,7 +1274,6 @@ elif active_page == "User Activity":
             )
 
     st.markdown("</div>", unsafe_allow_html=True)
-
 
 # -----------------------------------------------------------------------------
 # PAGE: FORECASTING
@@ -1195,7 +1352,6 @@ elif active_page == "Forecasting":
                 if "date" in df_fc.columns:
                     df_fc["date"] = pd.to_datetime(df_fc["date"])
 
-                # Forecast line chart
                 fig = go.Figure()
                 if "actual_value" in df_fc.columns:
                     fig.add_trace(
@@ -1281,18 +1437,15 @@ elif active_page == "Capacity Planning":
         go_btn = st.button("🔎 Load Capacity Plan", key="cp_btn")
 
         if go_btn:
-            # First try backend API
             params = {"service": service, "horizon": horizon}
             if region != "All regions":
                 params["region"] = region
 
             data = fetch_api("capacity-planning", params=params)
 
-            # If backend not ready -> fallback using raw data (NO visible info message)
             if not data:
                 df = df_raw.copy()
                 df["date"] = pd.to_datetime(df["date"])
-                # filter by region & service
                 if region != "All regions":
                     df = df[df["region"] == region]
                 df = df[df["resource_type"] == service]
@@ -1310,7 +1463,6 @@ elif active_page == "Capacity Planning":
                     rows = []
                     for r in df_window["region"].unique():
                         sub = df_window[df_window["region"] == r]
-                        # Use peak CPU as demand index (simple heuristic)
                         demand = float(sub["usage_cpu"].max())
                         capacity = demand * 0.9
                         gap = demand - capacity
@@ -1342,7 +1494,6 @@ elif active_page == "Capacity Planning":
             if df_cp is None or df_cp.empty:
                 st.warning("No capacity planning data could be generated.")
             else:
-                # Chart
                 if all(col in df_cp.columns for col in ["forecast_demand", "available_capacity"]):
                     fig = go.Figure()
                     fig.add_trace(
@@ -1367,7 +1518,6 @@ elif active_page == "Capacity Planning":
                     )
                     st.plotly_chart(fig, width="stretch")
 
-                # Recommendations panel
                 st.write("#### Recommendations")
                 for _, row in df_cp.iterrows():
                     risk_level = str(row.get("risk_level", "unknown")).lower()
@@ -1390,9 +1540,8 @@ elif active_page == "Capacity Planning":
 
     st.markdown("</div>", unsafe_allow_html=True)
 
-
 # -----------------------------------------------------------------------------
-# PAGE: MULTI-REGION COMPARE  (radar now reacts to metric)
+# PAGE: MULTI-REGION COMPARE
 # -----------------------------------------------------------------------------
 elif active_page == "Multi-Region Compare":
     st.markdown('<div class="section-card">', unsafe_allow_html=True)
@@ -1440,7 +1589,6 @@ elif active_page == "Multi-Region Compare":
             if df.empty:
                 st.warning("No data for selected combination.")
             else:
-                # Average metrics per region
                 agg = (
                     df.groupby("region")
                     .agg(
@@ -1451,7 +1599,6 @@ elif active_page == "Multi-Region Compare":
                     .reset_index()
                 )
 
-                # Radar now depends on selected metric
                 radar_metric_map = {
                     "CPU Usage (%)": "avg_cpu",
                     "Storage Usage (GB)": "avg_storage",
@@ -1471,7 +1618,6 @@ elif active_page == "Multi-Region Compare":
                 fig_radar.update_layout(height=420, margin=dict(l=10, r=10, t=40, b=10))
                 st.plotly_chart(fig_radar, width="stretch")
 
-                # Time-series compare
                 ts = (
                     df.groupby(["date", "region"])[metric_col]
                     .mean()
@@ -1498,7 +1644,7 @@ elif active_page == "Multi-Region Compare":
     st.markdown("</div>", unsafe_allow_html=True)
 
 # -----------------------------------------------------------------------------
-# PAGE: ALERTS (Prediction Alerts)
+# PAGE: ALERTS
 # -----------------------------------------------------------------------------
 elif active_page == "Alerts":
     st.markdown('<div class="section-card">', unsafe_allow_html=True)
@@ -1550,7 +1696,6 @@ elif active_page == "Alerts":
         btn = st.button("🔍 Check alerts for next 7 days", key="al_btn")
 
         if btn:
-            # Determine list of regions to query
             if region == "All regions":
                 region_list = sorted(df_raw["region"].unique().tolist())
             else:
@@ -1600,7 +1745,6 @@ elif active_page == "Alerts":
             else:
                 df_alerts = pd.DataFrame(rows)
 
-                # Overall banner
                 if (df_alerts["status"] == "⚠ High risk").any():
                     st.error("🔴 One or more regions are in **High risk** zone.")
                 elif (df_alerts["status"] == "🟡 Near limit").any():
@@ -1650,34 +1794,26 @@ elif active_page == "Chatbot":
         "Ask questions about what each page shows, how filters work, or how to explain metrics in your viva."
     )
 
-    # Initialize chat history
     if "chat_history" not in st.session_state:
         st.session_state["chat_history"] = []
 
-    # Show existing messages
     for msg in st.session_state["chat_history"]:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
 
-    # Chat input at the bottom
     user_msg = st.chat_input("Ask something about the dashboard or metrics...")
     if user_msg:
-        # Add user message
         st.session_state["chat_history"].append(
             {"role": "user", "content": user_msg}
         )
 
-        # Generate answer
         reply = simple_chatbot_reply(user_msg)
 
-        # Add assistant message
         st.session_state["chat_history"].append(
             {"role": "assistant", "content": reply}
         )
 
-        # Display assistant reply immediately
         with st.chat_message("assistant"):
             st.markdown(reply)
 
     st.markdown("</div>", unsafe_allow_html=True)
-
