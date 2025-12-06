@@ -1,19 +1,21 @@
-import os
-from datetime import date
-from typing import Any, Dict, Optional, List
-
-import numpy as np
+import streamlit as st
+import requests
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-import requests
-import streamlit as st
+import numpy as np
+from datetime import datetime, timedelta
+import time
+import warnings
+import os
+
+warnings.filterwarnings("ignore")
 
 # -----------------------------------------------------------------------------
-# BASIC CONFIG
+# PAGE CONFIG
 # -----------------------------------------------------------------------------
 st.set_page_config(
-    page_title="Azure Demand & Capacity Console",
+    page_title="Azure Demand Forecasting",
     page_icon="☁️",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -22,123 +24,168 @@ st.set_page_config(
 BASE_URL = "http://localhost:5000/api"
 
 # -----------------------------------------------------------------------------
-# DARK THEME + NAV BUTTON STYLING + POINTER CURSOR
+# GLOBAL THEME CSS (Azure gradient + new filter style for Data Explorer)
 # -----------------------------------------------------------------------------
 st.markdown(
     """
 <style>
 /* App background */
-.stApp {
-    background: radial-gradient(circle at top left, #020617 0, #020617 40%, #020617 100%);
-    color: #e5e7eb;
-    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+[data-testid="stAppViewContainer"] {
+    background: radial-gradient(circle at top left, #0f172a 0, #020617 45%, #020617 100%);
 }
 
-/* Header bar */
-.app-header {
-    background: linear-gradient(120deg, rgba(56,189,248,0.2), rgba(37,99,235,0.2));
+/* Remove wide default padding */
+.block-container {
+    padding-top: 1.5rem;
+    padding-bottom: 2rem;
+}
+
+/* Main header */
+.main-header {
+    background: linear-gradient(135deg, #2563eb 0%, #0ea5e9 40%, #22c55e 100%);
+    color: white;
+    padding: 1.2rem 1.6rem;
     border-radius: 1rem;
-    padding: 0.9rem 1.2rem;
-    border: 1px solid rgba(59,130,246,0.7);
-    box-shadow: 0 18px 45px rgba(15,23,42,0.95);
-    margin-bottom: 0.9rem;
+    box-shadow: 0 14px 30px rgba(15,23,42,0.45);
+    margin-bottom: 1.5rem;
+    border: 1px solid rgba(255,255,255,0.2);
 }
-.app-header-title {
-    font-size: 1.4rem;
-    font-weight: 700;
-    letter-spacing: 0.04em;
+.main-header h1 {
+    margin: 0;
+    font-size: 1.8rem;
+    letter-spacing: 0.03em;
 }
-.app-header-sub {
-    font-size: 0.82rem;
-    color: #cbd5f5;
+.main-header p {
+    margin: 0.3rem 0 0;
+    font-size: 0.95rem;
+    opacity: 0.9;
 }
 
 /* Cards */
-.card {
-    background: rgba(15,23,42,0.96);
+.metric-pill {
+    background: rgba(15,23,42,0.85);
     border-radius: 0.9rem;
-    padding: 0.9rem 1rem;
-    border: 1px solid rgba(55,65,81,0.9);
-    box-shadow: 0 14px 40px rgba(0,0,0,0.9);
+    padding: 1rem 1.1rem;
+    border: 1px solid rgba(148,163,184,0.6);
+    box-shadow: 0 8px 24px rgba(15,23,42,0.7);
+    backdrop-filter: blur(18px);
 }
-
-/* KPI */
-.kpi {
-    display: flex;
-    flex-direction: column;
-    gap: 0.2rem;
-}
-.kpi-label {
-    font-size: 0.7rem;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: #9ca3af;
-}
-.kpi-value {
-    font-size: 1.25rem;
-    font-weight: 600;
-    color: #f9fafb;
-}
-.kpi-sub {
-    font-size: 0.78rem;
-    color: #a5b4fc;
-}
-
-/* Info / warning strips */
-.info-strip {
-    background: rgba(37,99,235,0.12);
-    border-left: 3px solid #38bdf8;
-    border-radius: 0.5rem;
-    padding: 0.4rem 0.7rem;
-    font-size: 0.8rem;
-    margin-bottom: 0.5rem;
+.metric-pill h4 {
     color: #e5e7eb;
-}
-.warn-strip {
-    background: rgba(120,53,15,0.95);
-    border-left: 3px solid #f59e0b;
-    border-radius: 0.5rem;
-    padding: 0.4rem 0.7rem;
     font-size: 0.8rem;
-    margin-bottom: 0.5rem;
-    color: #fed7aa;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    margin-bottom: 0.35rem;
+}
+.metric-pill h2 {
+    color: #f9fafb;
+    font-size: 1.35rem;
+    margin-bottom: 0.25rem;
+}
+.metric-pill small {
+    color: #94a3b8;
+    font-size: 0.75rem;
 }
 
-/* Sidebar */
-[data-testid="stSidebar"] {
-    background: #020617;
-    border-right: 1px solid #1f2937;
+/* Section containers */
+.section-card {
+    background: rgba(15,23,42,0.9);
+    border-radius: 1rem;
+    padding: 1rem 1.2rem 1.1rem 1.2rem;
+    border: 1px solid rgba(51,65,85,0.9);
+    box-shadow: 0 10px 26px rgba(15,23,42,0.9);
+    margin-top: 0.6rem;
 }
-.sidebar-title {
+
+/* Data Explorer special styling */
+.data-explorer-shell {
+    background: radial-gradient(circle at top left, #1e293b 0, #020617 55%);
+    border-radius: 1.1rem;
+    padding: 1rem 1.2rem;
+    border: 1px solid rgba(148,163,184,0.5);
+    box-shadow: 0 18px 40px rgba(15,23,42,0.85);
+}
+.data-explorer-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.6rem;
+}
+.data-explorer-title {
     font-size: 1.05rem;
     font-weight: 600;
-    margin-bottom: 0.1rem;
+    color: #e5e7eb;
 }
-.sidebar-sub {
-    font-size: 0.75rem;
+.data-explorer-sub {
+    font-size: 0.8rem;
     color: #9ca3af;
-    margin-bottom: 0.7rem;
 }
-.nav-section-label {
-    font-size: 0.75rem;
+
+/* Data Explorer filter chips */
+.de-filter-chip {
+    background: rgba(15,23,42,0.9);
+    border-radius: 999px;
+    padding: 0.45rem 0.8rem;
+    border: 1px solid rgba(148,163,184,0.7);
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    margin-bottom: 0.4rem;
+}
+.de-filter-label {
+    font-size: 0.7rem;
     text-transform: uppercase;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.1em;
+    color: #9ca3af;
+}
+.de-filter-help {
+    font-size: 0.7rem;
     color: #6b7280;
-    margin: 0.3rem 0 0.2rem 0;
 }
 
-/* Nav buttons container */
-.nav-btn {
+/* Sidebar nav buttons */
+.sidebar-nav-button > button {
     width: 100%;
+    justify-content: flex-start;
+    border-radius: 999px;
+    border: 1px solid rgba(148,163,184,0.6);
+    background: linear-gradient(90deg, rgba(15,23,42,0.95), rgba(15,23,42,0.9));
+    color: #e5e7eb;
+    padding: 0.5rem 0.9rem;
+    font-size: 0.85rem;
+    margin-bottom: 0.3rem;
+    cursor: pointer;
+}
+.sidebar-nav-button > button:hover {
+    border-color: #38bdf8;
+    box-shadow: 0 0 0 1px rgba(56,189,248,0.45);
+}
+.sidebar-nav-button-active > button {
+    background: linear-gradient(90deg, #2563eb, #0ea5e9);
+    color: white !important;
+    border-color: transparent;
+    box-shadow: 0 6px 18px rgba(37,99,235,0.8);
 }
 
-/* Pointer cursor for all interactive elements */
-button,
-[data-testid="stDownloadButton"],
-[data-baseweb="select"] *,
-[role="combobox"],
-input,
-textarea {
+/* Generic titles */
+h3, h4 {
+    color: #e5e7eb !important;
+}
+
+/* Tables */
+[data-testid="stDataFrame"] {
+    border-radius: 0.8rem;
+    border: 1px solid rgba(55,65,81,0.8);
+    overflow: hidden;
+}
+
+/* Make everything interactive look clickable */
+.stDownloadButton button,
+.stButton button,
+.stMultiSelect,
+.stSelectbox,
+.stTextInput input,
+[data-testid="stSlider"] * {
     cursor: pointer !important;
 }
 </style>
@@ -147,125 +194,55 @@ textarea {
 )
 
 # -----------------------------------------------------------------------------
-# API HELPERS
+# BASIC HELPERS
 # -----------------------------------------------------------------------------
-@st.cache_data(ttl=300)
-def api_get(endpoint: str, params: Optional[Dict[str, Any]] = None):
-    url = f"{BASE_URL}/{endpoint}"
+@st.cache_data(show_spinner=False, ttl=300)
+def fetch_api(endpoint: str, params: dict | None = None):
     try:
-        r = requests.get(url, params=params, timeout=60)
-        r.raise_for_status()
-        return r.json()
+        resp = requests.get(f"{BASE_URL}/{endpoint}", params=params, timeout=60)
+        resp.raise_for_status()
+        return resp.json()
     except Exception as e:
-        # Show once per call-site; no spam
-        st.error(f"API error from `{endpoint}`: {e}")
+        # we don't hard-fail, just return None
         return None
 
 
-@st.cache_data(ttl=600)
-def load_filters() -> Dict[str, Any]:
-    data = api_get("filters/options")
-    return data or {}
+def make_download_button(df: pd.DataFrame, label: str, filename: str, key: str):
+    if df.empty:
+        return
+    csv = df.to_csv(index=False).encode("utf-8")
+    st.download_button(
+        label=label,
+        data=csv,
+        file_name=filename,
+        mime="text/csv",
+        key=key,
+    )
 
 
-@st.cache_data(ttl=300)
-def load_raw_data() -> pd.DataFrame:
-    data = api_get("data/raw")
+@st.cache_data(show_spinner=False, ttl=3600)
+def load_filter_options():
+    return fetch_api("filters/options") or {}
+
+
+filter_options = load_filter_options()
+ALL_REGIONS = filter_options.get("regions", [])
+ALL_RESOURCES = filter_options.get("resource_types", [])
+
+
+@st.cache_data(show_spinner=False, ttl=300)
+def load_raw_data():
+    data = fetch_api("data/raw")
     if not data:
         return pd.DataFrame()
     df = pd.DataFrame(data)
     if "date" in df.columns:
-        df["date"] = pd.to_datetime(df["date"])
+        df["date"] = pd.to_datetime(df["date"]).dt.date
     return df
 
 
-def filter_dataframe(df: pd.DataFrame, regions, resources, start: Optional[date], end: Optional[date]) -> pd.DataFrame:
-    """Apply per-page filters."""
-    if df.empty:
-        return df.copy()
-    out = df.copy()
-    if "region" in out.columns and regions:
-        out = out[out["region"].isin(regions)]
-    if "resource_type" in out.columns and resources:
-        out = out[out["resource_type"].isin(resources)]
-    if "date" in out.columns and start and end:
-        out = out[(out["date"].dt.date >= start) & (out["date"].dt.date <= end)]
-    return out
-
-
-def render_page_filters(prefix: str, df: pd.DataFrame, filters_meta: Dict[str, Any]):
-    """Render region/resource/date range filters for each page (independent)."""
-    if df.empty:
-        return [], [], None, None
-
-    regions_all = filters_meta.get("regions") or (sorted(df["region"].dropna().unique()) if "region" in df.columns else [])
-    res_all = filters_meta.get("resource_types") or (
-        sorted(df["resource_type"].dropna().unique()) if "resource_type" in df.columns else []
-    )
-
-    if "date" in df.columns and not df["date"].empty:
-        min_d = df["date"].min().date()
-        max_d = df["date"].max().date()
-    else:
-        min_d = max_d = None
-
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        sel_regions = st.multiselect(
-            "Regions",
-            options=regions_all,
-            default=regions_all,
-            key=f"{prefix}_regions",
-        )
-    with col2:
-        sel_resources = st.multiselect(
-            "Resource types",
-            options=res_all,
-            default=res_all,
-            key=f"{prefix}_resources",
-        )
-    with col3:
-        if min_d and max_d:
-            date_range = st.date_input(
-                "Date range",
-                [min_d, max_d],
-                min_value=min_d,
-                max_value=max_d,
-                key=f"{prefix}_dates",
-            )
-            if isinstance(date_range, (list, tuple)) and len(date_range) == 2:
-                start, end = date_range
-            else:
-                start, end = min_d, max_d
-        else:
-            start, end = None, None
-
-    return sel_regions, sel_resources, start, end
-
-
 # -----------------------------------------------------------------------------
-# HEADER
-# -----------------------------------------------------------------------------
-st.markdown(
-    """
-<div class="app-header">
-  <div class="app-header-title">Azure Demand & Capacity Console</div>
-  <div class="app-header-sub">
-    Unified view of usage trends, forecasts, and capacity recommendations across Azure regions.
-  </div>
-</div>
-""",
-    unsafe_allow_html=True,
-)
-
-# -----------------------------------------------------------------------------
-# LOAD COMMON DATA
-# -----------------------------------------------------------------------------
-filters_meta = load_filters()
-raw_df = load_raw_data()
-
-# -----------------------------------------------------------------------------
-# SIDEBAR – NAV BUTTONS
+# SIDEBAR NAVIGATION (BUTTONS, NOT RADIO)
 # -----------------------------------------------------------------------------
 PAGES = [
     "Overview",
@@ -279,685 +256,1116 @@ PAGES = [
     "Alerts",
 ]
 
-if "current_page" not in st.session_state:
-    st.session_state["current_page"] = "Overview"
+if "active_page" not in st.session_state:
+    st.session_state["active_page"] = "Overview"
+
+
+def nav_button(label: str, icon: str):
+    """Render a nav button and update active page if clicked."""
+    cls = (
+        "sidebar-nav-button-active"
+        if st.session_state["active_page"] == label
+        else "sidebar-nav-button"
+    )
+    with st.container():
+        st.markdown(f'<div class="{cls}">', unsafe_allow_html=True)
+        clicked = st.button(f"{icon}  {label}", key=f"nav_{label}")
+        st.markdown("</div>", unsafe_allow_html=True)
+    if clicked:
+        st.session_state["active_page"] = label
+
 
 with st.sidebar:
-    st.markdown('<div class="sidebar-title">☁ Azure Console</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sidebar-sub">Demand Forecasting & Capacity Planning</div>', unsafe_allow_html=True)
+    st.markdown("### ☁️ Azure Demand Dashboard")
+    st.caption("Navigate between analytics pages")
 
-    st.markdown('<div class="nav-section-label">Pages</div>', unsafe_allow_html=True)
-    for page_name in PAGES:
-        if st.button(f"{page_name}", key=f"nav_{page_name}", use_container_width=True):
-            st.session_state["current_page"] = page_name
-
-current_page = st.session_state["current_page"]
+    for label, icon in [
+        ("Overview", "📊"),
+        ("Trends", "📈"),
+        ("Regional", "🌍"),
+        ("Resources", "⚙️"),
+        ("User Activity", "👥"),
+        ("Forecasting", "🤖"),
+        ("Capacity Planning", "🏗️"),
+        ("Multi-Region Compare", "🧭"),
+        ("Alerts", "🚨"),
+    ]:
+        nav_button(label, icon)
 
 # -----------------------------------------------------------------------------
-# PAGE: OVERVIEW
+# MAIN HEADER
 # -----------------------------------------------------------------------------
-if current_page == "Overview":
-    st.subheader("📊 Overview & KPIs")
+st.markdown(
+    """
+<div class="main-header">
+  <h1>Azure Demand Forecasting & Capacity Optimization</h1>
+  <p>End-to-end insights across regions, resources, forecasts and capacity risk.</p>
+</div>
+""",
+    unsafe_allow_html=True,
+)
 
-    kpi_data = api_get("kpis")
-    spark_data = api_get("sparklines")
+active_page = st.session_state["active_page"]
+
+# -----------------------------------------------------------------------------
+# PAGE: OVERVIEW  (includes redesigned Data Explorer)
+# -----------------------------------------------------------------------------
+if active_page == "Overview":
+    # ================= KPIs =================
+    kpi_data = fetch_api("kpis")
 
     if kpi_data:
-        c1, c2, c3, c4 = st.columns(4)
-        with c1:
-            peak_cpu = float(kpi_data.get("peak_cpu") or 0.0)
-            avg_cpu = float(kpi_data.get("avg_cpu") or 0.0)
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.markdown('<div class="metric-pill">', unsafe_allow_html=True)
+            st.markdown("<h4>Peak CPU</h4>", unsafe_allow_html=True)
             st.markdown(
-                f"""
-                <div class="card kpi">
-                  <div class="kpi-label">Peak CPU</div>
-                  <div class="kpi-value">{peak_cpu:.1f}%</div>
-                  <div class="kpi-sub">Average {avg_cpu:.1f}%</div>
-                </div>
-                """,
+                f"<h2>{kpi_data['peak_cpu']:.1f}%</h2>",
                 unsafe_allow_html=True,
             )
-        with c2:
-            max_storage = float(kpi_data.get("max_storage") or 0.0)
-            avg_storage = float(kpi_data.get("avg_storage") or 0.0)
             st.markdown(
-                f"""
-                <div class="card kpi">
-                  <div class="kpi-label">Max Storage</div>
-                  <div class="kpi-value">{max_storage:,.0f} GB</div>
-                  <div class="kpi-sub">Average {avg_storage:,.0f} GB</div>
-                </div>
-                """,
+                f"<small>+{kpi_data['peak_cpu'] - kpi_data['avg_cpu']:.1f}% above avg</small>",
                 unsafe_allow_html=True,
             )
-        with c3:
-            peak_users = int(kpi_data.get("peak_users") or 0)
-            avg_users = float(kpi_data.get("avg_users") or 0.0)
+            st.markdown("</div>", unsafe_allow_html=True)
+
+        with col2:
+            st.markdown('<div class="metric-pill">', unsafe_allow_html=True)
+            st.markdown("<h4>Max Storage</h4>", unsafe_allow_html=True)
             st.markdown(
-                f"""
-                <div class="card kpi">
-                  <div class="kpi-label">Peak Active Users</div>
-                  <div class="kpi-value">{peak_users:,}</div>
-                  <div class="kpi-sub">Average {avg_users:,.0f}</div>
-                </div>
-                """,
+                f"<h2>{kpi_data['max_storage']:,} GB</h2>",
                 unsafe_allow_html=True,
             )
-        with c4:
-            hi = kpi_data.get("holiday_impact") or {}
-            pct = float(hi.get("percentage") or 0.0)
-            sign = "+" if pct >= 0 else ""
             st.markdown(
-                f"""
-                <div class="card kpi">
-                  <div class="kpi-label">Holiday Impact</div>
-                  <div class="kpi-value">{sign}{pct:.1f}%</div>
-                  <div class="kpi-sub">CPU vs working days</div>
-                </div>
-                """,
+                f"<small>+{kpi_data['max_storage'] - kpi_data['avg_storage']:.0f} GB above avg</small>",
                 unsafe_allow_html=True,
             )
+            st.markdown("</div>", unsafe_allow_html=True)
 
-        dr = kpi_data.get("date_range") or {}
-        c5, c6, c7, c8 = st.columns(4)
-        with c5:
-            st.metric("Regions", kpi_data.get("total_regions", 0))
-        with c6:
-            st.metric("Resource types", kpi_data.get("total_resource_types", 0))
-        with c7:
-            st.metric("Data points", f"{kpi_data.get('data_points', 0):,}")
-        with c8:
-            st.metric("Time span", f"{dr.get('days', 0)} days")
+        with col3:
+            st.markdown('<div class="metric-pill">', unsafe_allow_html=True)
+            st.markdown("<h4>Peak Users</h4>", unsafe_allow_html=True)
+            st.markdown(
+                f"<h2>{kpi_data['peak_users']:,}</h2>",
+                unsafe_allow_html=True,
+            )
+            st.markdown(
+                f"<small>+{kpi_data['peak_users'] - kpi_data['avg_users']:.0f} vs avg</small>",
+                unsafe_allow_html=True,
+            )
+            st.markdown("</div>", unsafe_allow_html=True)
 
-    st.markdown("---")
-    st.markdown("##### Recent behaviour (from backend sparklines)")
+        with col4:
+            hol = kpi_data.get("holiday_impact", {}).get("percentage", 0.0)
+            st.markdown('<div class="metric-pill">', unsafe_allow_html=True)
+            st.markdown("<h4>Holiday Impact</h4>", unsafe_allow_html=True)
+            st.markdown(
+                f"<h2>{hol:+.1f}%</h2>",
+                unsafe_allow_html=True,
+            )
+            st.markdown(
+                "<small>CPU usage change on weekends / holidays</small>",
+                unsafe_allow_html=True,
+            )
+            st.markdown("</div>", unsafe_allow_html=True)
 
-    if spark_data:
-        col1, col2, col3 = st.columns(3)
-        if spark_data.get("cpu_trend"):
-            cpu_df = pd.DataFrame(spark_data["cpu_trend"])
-            if "date" in cpu_df:
-                cpu_df["date"] = pd.to_datetime(cpu_df["date"])
-                with col1:
-                    fig = px.line(cpu_df, x="date", y="usage_cpu", title="CPU (%)")
-                    fig.update_layout(height=240, margin=dict(l=0, r=0, t=30, b=0))
-                    st.plotly_chart(fig, width="stretch")
-        if spark_data.get("storage_trend"):
-            sto_df = pd.DataFrame(spark_data["storage_trend"])
-            if "date" in sto_df:
-                sto_df["date"] = pd.to_datetime(sto_df["date"])
-                with col2:
-                    fig = px.line(sto_df, x="date", y="usage_storage", title="Storage (GB)")
-                    fig.update_layout(height=240, margin=dict(l=0, r=0, t=30, b=0))
-                    st.plotly_chart(fig, width="stretch")
-        if spark_data.get("users_trend"):
-            usr_df = pd.DataFrame(spark_data["users_trend"])
-            if "date" in usr_df:
-                usr_df["date"] = pd.to_datetime(usr_df["date"])
-                with col3:
-                    fig = px.line(usr_df, x="date", y="users_active", title="Active users")
-                    fig.update_layout(height=240, margin=dict(l=0, r=0, t=30, b=0))
-                    st.plotly_chart(fig, width="stretch")
+    st.markdown("")
 
-    st.markdown("---")
-    st.subheader("🗂 Data Explorer")
+    # ================= SPARKLINES (recent 30 days) =================
+    st.markdown('<div class="section-card">', unsafe_allow_html=True)
+    st.markdown("#### Recent 30-day Trends")
+    spark = fetch_api("sparklines")
+    if spark:
+        sc1, sc2, sc3 = st.columns(3)
+        if spark.get("cpu_trend"):
+            df_cpu = pd.DataFrame(spark["cpu_trend"])
+            if not df_cpu.empty:
+                df_cpu["date"] = pd.to_datetime(df_cpu["date"])
+                fig = px.line(
+                    df_cpu,
+                    x="date",
+                    y="usage_cpu",
+                    title="CPU Usage (%)",
+                )
+                fig.update_layout(height=260, margin=dict(l=10, r=10, t=40, b=10))
+                sc1.plotly_chart(fig, width="stretch")
+        if spark.get("storage_trend"):
+            df_st = pd.DataFrame(spark["storage_trend"])
+            if not df_st.empty:
+                df_st["date"] = pd.to_datetime(df_st["date"])
+                fig2 = px.line(
+                    df_st,
+                    x="date",
+                    y="usage_storage",
+                    title="Storage Usage (GB)",
+                )
+                fig2.update_layout(height=260, margin=dict(l=10, r=10, t=40, b=10))
+                sc2.plotly_chart(fig2, width="stretch")
+        if spark.get("users_trend"):
+            df_us = pd.DataFrame(spark["users_trend"])
+            if not df_us.empty:
+                df_us["date"] = pd.to_datetime(df_us["date"])
+                fig3 = px.line(
+                    df_us,
+                    x="date",
+                    y="users_active",
+                    title="Active Users",
+                )
+                fig3.update_layout(height=260, margin=dict(l=10, r=10, t=40, b=10))
+                sc3.plotly_chart(fig3, width="stretch")
+    st.markdown("</div>", unsafe_allow_html=True)
 
-    if raw_df.empty:
-        st.info("No raw data returned from backend.")
+    st.markdown("")
+
+    # ================= REDESIGNED DATA EXPLORER (NO DATE RANGE) =================
+    st.markdown('<div class="data-explorer-shell">', unsafe_allow_html=True)
+    st.markdown(
+        """
+<div class="data-explorer-header">
+  <div>
+    <div class="data-explorer-title">🗃 Data Explorer</div>
+    <div class="data-explorer-sub">Slice and export the unified Azure demand dataset by region & resource.</div>
+  </div>
+  <div style="font-size:0.75rem;color:#9ca3af;">
+    Tip: Use filters below then download only the filtered slice.
+  </div>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+
+    df_raw = load_raw_data()
+    if df_raw.empty:
+        st.info("No data available from `/api/data/raw`.")
     else:
-        r_regions, r_resources, r_start, r_end = render_page_filters("ov", raw_df, filters_meta)
-        df_view = filter_dataframe(raw_df, r_regions, r_resources, r_start, r_end)
-        st.caption(f"Filtered rows: {len(df_view):,}")
-        st.dataframe(df_view.sort_values("date", ascending=False), height=320)
+        # Filter chips row (NO date inputs here)
+        fcol1, fcol2, fcol3 = st.columns([1, 1, 1])
 
-        if not df_view.empty:
-            csv_bytes = df_view.to_csv(index=False).encode("utf-8")
-            st.download_button(
-                "Download filtered data as CSV",
-                data=csv_bytes,
-                file_name="azure_filtered_data_overview.csv",
-                mime="text/csv",
-                key="dl_overview_filtered",
+        with fcol1:
+            st.markdown(
+                '<div class="de-filter-chip">'
+                '<div class="de-filter-label">Regions</div>',
+                unsafe_allow_html=True,
             )
+            sel_regions = st.multiselect(
+                " ",
+                options=sorted(df_raw["region"].unique().tolist()),
+                default=sorted(df_raw["region"].unique().tolist()),
+                key="de_regions",
+                label_visibility="collapsed",
+            )
+            st.markdown(
+                '<div class="de-filter-help">Choose one or more Azure regions.</div></div>',
+                unsafe_allow_html=True,
+            )
+
+        with fcol2:
+            st.markdown(
+                '<div class="de-filter-chip">'
+                '<div class="de-filter-label">Resource Types</div>',
+                unsafe_allow_html=True,
+            )
+            sel_resources = st.multiselect(
+                "  ",
+                options=sorted(df_raw["resource_type"].unique().tolist()),
+                default=sorted(df_raw["resource_type"].unique().tolist()),
+                key="de_resources",
+                label_visibility="collapsed",
+            )
+            st.markdown(
+                '<div class="de-filter-help">Filter by compute, storage, database, etc.</div></div>',
+                unsafe_allow_html=True,
+            )
+
+        with fcol3:
+            st.markdown(
+                '<div class="de-filter-chip">'
+                '<div class="de-filter-label">Sort By</div>',
+                unsafe_allow_html=True,
+            )
+            sort_option = st.selectbox(
+                "   ",
+                ["Newest first", "Oldest first", "Highest CPU", "Highest Storage", "Most Users"],
+                key="de_sort",
+                label_visibility="collapsed",
+            )
+            st.markdown(
+                '<div class="de-filter-help">Control the ordering of rows below.</div></div>',
+                unsafe_allow_html=True,
+            )
+
+        # Apply filters (NO date filter)
+        df_filtered = df_raw.copy()
+        if sel_regions:
+            df_filtered = df_filtered[df_filtered["region"].isin(sel_regions)]
+        if sel_resources:
+            df_filtered = df_filtered[df_filtered["resource_type"].isin(sel_resources)]
+
+        # Sorting
+        if sort_option == "Newest first":
+            df_filtered = df_filtered.sort_values("date", ascending=False)
+        elif sort_option == "Oldest first":
+            df_filtered = df_filtered.sort_values("date", ascending=True)
+        elif sort_option == "Highest CPU":
+            df_filtered = df_filtered.sort_values("usage_cpu", ascending=False)
+        elif sort_option == "Highest Storage":
+            df_filtered = df_filtered.sort_values("usage_storage", ascending=False)
+        elif sort_option == "Most Users":
+            df_filtered = df_filtered.sort_values("users_active", ascending=False)
+
+        # Reorder & prettify columns
+        display_cols = [
+            "date",
+            "region",
+            "resource_type",
+            "usage_cpu",
+            "usage_storage",
+            "users_active",
+            "economic_index",
+            "cloud_market_demand",
+            "holiday",
+        ]
+        display_cols = [c for c in display_cols if c in df_filtered.columns]
+        df_disp = df_filtered[display_cols].copy()
+        if "holiday" in df_disp.columns:
+            df_disp["holiday"] = df_disp["holiday"].map({0: "No", 1: "Yes"})
+
+        st.markdown(
+            f"<div style='font-size:0.8rem;color:#9ca3af;margin-top:0.4rem;'>"
+            f"Showing <b>{len(df_disp):,}</b> records</div>",
+            unsafe_allow_html=True,
+        )
+
+        st.dataframe(
+            df_disp,
+            width="stretch",
+            height=360,
+        )
+
+        # Quick insights
+        with st.expander("📌 Quick Stats on Filtered Slice"):
+            c1, c2, c3 = st.columns(3)
+            with c1:
+                if "usage_cpu" in df_disp.columns:
+                    st.metric("Avg CPU (%)", f"{df_disp['usage_cpu'].mean():.1f}")
+                    st.metric("Peak CPU (%)", f"{df_disp['usage_cpu'].max():.1f}")
+            with c2:
+                if "usage_storage" in df_disp.columns:
+                    st.metric("Avg Storage (GB)", f"{df_disp['usage_storage'].mean():.0f}")
+                    st.metric("Max Storage (GB)", f"{df_disp['usage_storage'].max():.0f}")
+            with c3:
+                if "users_active" in df_disp.columns:
+                    st.metric("Total Users (sum)", f"{int(df_disp['users_active'].sum()):,}")
+                    st.metric(
+                        "Distinct Regions",
+                        f"{df_disp['region'].nunique() if 'region' in df_disp.columns else 0}",
+                    )
+
+        make_download_button(
+            df_disp,
+            label="⬇️ Download filtered slice as CSV",
+            filename="azure_data_explorer_filtered.csv",
+            key="de_download",
+        )
+
+    st.markdown("</div>", unsafe_allow_html=True)
 
 # -----------------------------------------------------------------------------
 # PAGE: TRENDS
 # -----------------------------------------------------------------------------
-elif current_page == "Trends":
-    st.subheader("📈 Time-series Trends")
+elif active_page == "Trends":
+    st.markdown('<div class="section-card">', unsafe_allow_html=True)
+    st.markdown("### 📈 Time-Series Trends")
 
-    if raw_df.empty:
-        st.info("No data for trends.")
+    df_raw = load_raw_data()
+    if df_raw.empty:
+        st.info("No data available.")
     else:
-        tr_regions, tr_resources, tr_start, tr_end = render_page_filters("tr", raw_df, filters_meta)
-        df_tr = filter_dataframe(raw_df, tr_regions, tr_resources, tr_start, tr_end)
+        df_ts = df_raw.copy()
+        df_ts["date"] = pd.to_datetime(df_ts["date"])
 
-        if df_tr.empty:
-            st.info("No rows for selected filters.")
-        else:
-            metric_map = {
-                "CPU (%)": "usage_cpu",
-                "Storage (GB)": "usage_storage",
-                "Active users": "users_active",
-            }
-            c1, c2, c3 = st.columns(3)
-            with c1:
-                metric_label = st.selectbox("Metric", list(metric_map.keys()), key="trend_metric")
-                metric_col = metric_map[metric_label]
-            with c2:
-                win = st.selectbox("Window", ["All", "Last 7 days", "Last 30 days", "Last 90 days"], key="trend_window")
-            with c3:
-                smooth = st.checkbox("7-day smoothing", value=True, key="trend_smoothing")
+        t1, t2, t3, t4 = st.columns(4)
+        with t1:
+            metric_label = st.selectbox(
+                "Metric",
+                ["CPU Usage (%)", "Storage Usage (GB)", "Active Users"],
+                key="tr_metric",
+            )
+        metric_map = {
+            "CPU Usage (%)": "usage_cpu",
+            "Storage Usage (GB)": "usage_storage",
+            "Active Users": "users_active",
+        }
+        metric_col = metric_map[metric_label]
 
-            series = (
-                df_tr.groupby("date")[metric_col]
-                .mean()
-                .reset_index()
-                .sort_values("date")
+        with t2:
+            region = st.selectbox(
+                "Region",
+                ["All"] + sorted(df_ts["region"].unique().tolist()),
+                key="tr_region",
+            )
+        with t3:
+            rtype = st.selectbox(
+                "Resource Type",
+                ["All"] + sorted(df_ts["resource_type"].unique().tolist()),
+                key="tr_resource",
+            )
+        with t4:
+            window = st.selectbox(
+                "Time Window",
+                ["All", "Last 7 days", "Last 30 days", "Last 90 days"],
+                key="tr_window",
             )
 
-            if win != "All" and not series.empty:
-                days = int(win.split()[1])
-                series = series.tail(days)
+        # Apply filters
+        if region != "All":
+            df_ts = df_ts[df_ts["region"] == region]
+        if rtype != "All":
+            df_ts = df_ts[df_ts["resource_type"] == rtype]
 
-            if series.empty:
-                st.warning("No data after applying window filter.")
-            else:
-                if smooth and len(series) > 7:
-                    series["smoothed"] = series[metric_col].rolling(window=7, min_periods=1).mean()
-                else:
-                    series["smoothed"] = series[metric_col]
+        if window != "All":
+            days = int(window.split()[1])
+            max_date = df_ts["date"].max()
+            cutoff = max_date - timedelta(days=days)
+            df_ts = df_ts[df_ts["date"] >= cutoff]
 
-                fig = go.Figure()
-                fig.add_trace(
-                    go.Scatter(
-                        x=series["date"],
-                        y=series[metric_col],
-                        mode="lines",
-                        name="Raw",
-                        line=dict(width=1, color="#6b7280"),
-                    )
-                )
-                fig.add_trace(
-                    go.Scatter(
-                        x=series["date"],
-                        y=series["smoothed"],
-                        mode="lines",
-                        name="Smoothed",
-                        line=dict(width=3, color="#22c55e"),
-                    )
-                )
-                fig.update_layout(height=360, margin=dict(l=0, r=0, t=30, b=0), yaxis_title=metric_label)
-                st.plotly_chart(fig, width="stretch")
+        df_agg = (
+            df_ts.groupby("date")
+            .agg({metric_col: "mean"})
+            .reset_index()
+            .sort_values("date")
+        )
 
-                csv_trend = series[["date", metric_col, "smoothed"]].to_csv(index=False).encode("utf-8")
-                st.download_button(
-                    "Download trend CSV",
-                    data=csv_trend,
-                    file_name=f"trend_{metric_col}.csv",
-                    mime="text/csv",
-                    key="dl_trend",
-                )
+        if df_agg.empty:
+            st.warning("No data for selected filters.")
+        else:
+            fig = px.line(
+                df_agg,
+                x="date",
+                y=metric_col,
+                title=f"{metric_label} over time",
+            )
+            fig.update_layout(height=420, margin=dict(l=10, r=10, t=40, b=10))
+            st.plotly_chart(fig, width="stretch")
+
+            make_download_button(
+                df_agg,
+                label="⬇️ Download trend data",
+                filename="trend_data.csv",
+                key="tr_download",
+            )
+
+    st.markdown("</div>", unsafe_allow_html=True)
 
 # -----------------------------------------------------------------------------
 # PAGE: REGIONAL
 # -----------------------------------------------------------------------------
-elif current_page == "Regional":
-    st.subheader("🌍 Regional Comparison")
+elif active_page == "Regional":
+    st.markdown('<div class="section-card">', unsafe_allow_html=True)
+    st.markdown("### 🌍 Regional Overview")
 
-    if raw_df.empty:
-        st.info("No data for regional view.")
+    df_raw = load_raw_data()
+    if df_raw.empty:
+        st.info("No data available.")
     else:
-        reg_regions, reg_resources, reg_start, reg_end = render_page_filters("reg", raw_df, filters_meta)
-        df_reg = filter_dataframe(raw_df, reg_regions, reg_resources, reg_start, reg_end)
+        agg = (
+            df_raw.groupby("region")
+            .agg(
+                avg_cpu=("usage_cpu", "mean"),
+                avg_storage=("usage_storage", "mean"),
+                avg_users=("users_active", "mean"),
+                records=("region", "count"),
+            )
+            .reset_index()
+        )
 
-        if df_reg.empty:
-            st.info("No data for selected regions/resources.")
-        else:
+        top_region_cpu = agg.sort_values("avg_cpu", ascending=False).iloc[0]
+        top_region_storage = agg.sort_values("avg_storage", ascending=False).iloc[0]
+        top_region_users = agg.sort_values("avg_users", ascending=False).iloc[0]
+
+        # KPI row similar to old style
+        kc1, kc2, kc3 = st.columns(3)
+        with kc1:
+            st.markdown('<div class="metric-pill">', unsafe_allow_html=True)
+            st.markdown("<h4>CPU Hotspot</h4>", unsafe_allow_html=True)
+            st.markdown(
+                f"<h2>{top_region_cpu['region']}</h2>",
+                unsafe_allow_html=True,
+            )
+            st.markdown(
+                f"<small>Avg CPU: {top_region_cpu['avg_cpu']:.1f}%</small>",
+                unsafe_allow_html=True,
+            )
+            st.markdown("</div>", unsafe_allow_html=True)
+
+        with kc2:
+            st.markdown('<div class="metric-pill">', unsafe_allow_html=True)
+            st.markdown("<h4>Storage Heavy</h4>", unsafe_allow_html=True)
+            st.markdown(
+                f"<h2>{top_region_storage['region']}</h2>",
+                unsafe_allow_html=True,
+            )
+            st.markdown(
+                f"<small>Avg Storage: {top_region_storage['avg_storage']:.0f} GB</small>",
+                unsafe_allow_html=True,
+            )
+            st.markdown("</div>", unsafe_allow_html=True)
+
+        with kc3:
+            st.markdown('<div class="metric-pill">', unsafe_allow_html=True)
+            st.markdown("<h4>Most Active Users</h4>", unsafe_allow_html=True)
+            st.markdown(
+                f"<h2>{top_region_users['region']}</h2>",
+                unsafe_allow_html=True,
+            )
+            st.markdown(
+                f"<small>Avg Users: {top_region_users['avg_users']:.0f}</small>",
+                unsafe_allow_html=True,
+            )
+            st.markdown("</div>", unsafe_allow_html=True)
+
+        st.markdown("")
+
+        col1, col2 = st.columns([1.7, 1.3])
+        with col1:
+            metric_label = st.selectbox(
+                "Metric",
+                ["Avg CPU (%)", "Avg Storage (GB)", "Avg Active Users"],
+                key="reg_metric",
+            )
             metric_map = {
-                "CPU (%)": "usage_cpu",
-                "Storage (GB)": "usage_storage",
-                "Active users": "users_active",
+                "Avg CPU (%)": "avg_cpu",
+                "Avg Storage (GB)": "avg_storage",
+                "Avg Active Users": "avg_users",
             }
-            metric_label = st.selectbox("Metric", list(metric_map.keys()), key="regional_metric")
-            metric_col = metric_map[metric_label]
+            mcol = metric_map[metric_label]
 
-            reg_stats = (
-                df_reg.groupby("region")[metric_col]
-                .agg(["mean", "max", "std", "count"])
-                .reset_index()
-                .rename(columns={"mean": "avg", "max": "peak", "std": "volatility", "count": "points"})
+            fig = px.bar(
+                agg.sort_values(mcol, ascending=False),
+                x="region",
+                y=mcol,
+                title=f"{metric_label} by region",
+            )
+            fig.update_layout(height=420, xaxis_title="", margin=dict(l=10, r=10, t=40, b=80))
+            st.plotly_chart(fig, width="stretch")
+
+        with col2:
+            st.write("#### Summary")
+            st.metric("Regions Covered", agg["region"].nunique())
+            st.metric("Total Records", int(agg["records"].sum()))
+            if "avg_cpu" in agg.columns:
+                st.metric("Global Avg CPU", f"{agg['avg_cpu'].mean():.1f}%")
+            if "avg_storage" in agg.columns:
+                st.metric("Global Avg Storage", f"{agg['avg_storage'].mean():.0f} GB")
+
+            make_download_button(
+                agg,
+                label="⬇️ Download regional summary",
+                filename="regional_summary.csv",
+                key="reg_download",
             )
 
-            if reg_stats.empty:
-                st.info("No regional stats.")
-            else:
-                fig = px.bar(
-                    reg_stats.sort_values("avg", ascending=False),
-                    x="region",
-                    y="avg",
-                    color="avg",
-                    color_continuous_scale="viridis",
-                    labels={"avg": f"Average {metric_label}", "region": "Region"},
-                )
-                fig.update_layout(height=380, margin=dict(l=0, r=0, t=30, b=0), xaxis_tickangle=-35)
-                st.plotly_chart(fig, width="stretch")
+    st.markdown("</div>", unsafe_allow_html=True)
 
-                with st.expander("Show regional table"):
-                    st.dataframe(reg_stats, height=260)
 
 # -----------------------------------------------------------------------------
 # PAGE: RESOURCES
 # -----------------------------------------------------------------------------
-elif current_page == "Resources":
-    st.subheader("⚙️ Resource Type Utilization")
+elif active_page == "Resources":
+    st.markdown('<div class="section-card">', unsafe_allow_html=True)
+    st.markdown("### ⚙️ Resource Type Utilization")
 
-    if raw_df.empty:
-        st.info("No data for resource analysis.")
+    df_raw = load_raw_data()
+    if df_raw.empty:
+        st.info("No data available.")
     else:
-        res_regions, res_resources, res_start, res_end = render_page_filters("res", raw_df, filters_meta)
-        df_res = filter_dataframe(raw_df, res_regions, res_resources, res_start, res_end)
-
-        if df_res.empty:
-            st.info("No data for selected filters.")
-        else:
-            res_stats = (
-                df_res.groupby("resource_type")
-                .agg(
-                    avg_cpu=("usage_cpu", "mean"),
-                    avg_storage=("usage_storage", "mean"),
-                    avg_users=("users_active", "mean"),
-                )
-                .reset_index()
+        df_res = df_raw.copy()
+        rcol1, rcol2 = st.columns(2)
+        with rcol1:
+            region = st.selectbox(
+                "Region",
+                ["All"] + sorted(df_res["region"].unique().tolist()),
+                key="res_region",
             )
-            if res_stats.empty:
-                st.info("No resource stats.")
-            else:
-                fig = px.bar(
-                    res_stats,
-                    x="resource_type",
-                    y=["avg_cpu", "avg_storage", "avg_users"],
-                    barmode="group",
-                    labels={"value": "Average", "resource_type": "Resource"},
-                )
-                fig.update_layout(height=380, margin=dict(l=0, r=0, t=30, b=0))
-                st.plotly_chart(fig, width="stretch")
+        with rcol2:
+            metric_label = st.selectbox(
+                "Metric",
+                ["Avg CPU (%)", "Avg Storage (GB)", "Avg Active Users"],
+                key="res_metric",
+            )
+        metric_map_raw = {
+            "Avg CPU (%)": "usage_cpu",
+            "Avg Storage (GB)": "usage_storage",
+            "Avg Active Users": "users_active",
+        }
+        mcol = metric_map_raw[metric_label]
 
-                csv_res = res_stats.to_csv(index=False).encode("utf-8")
-                st.download_button(
-                    "Download resource stats CSV",
-                    data=csv_res,
-                    file_name="resource_stats.csv",
-                    mime="text/csv",
-                    key="dl_resources",
-                )
+        if region != "All":
+            df_res = df_res[df_res["region"] == region]
 
-# -----------------------------------------------------------------------------
-# PAGE: USER ACTIVITY
-# -----------------------------------------------------------------------------
-elif current_page == "User Activity":
-    st.subheader("👥 User Activity")
-
-    if raw_df.empty:
-        st.info("No data for user analysis.")
-    else:
-        ua_regions, ua_resources, ua_start, ua_end = render_page_filters("ua", raw_df, filters_meta)
-        df_ua = filter_dataframe(raw_df, ua_regions, ua_resources, ua_start, ua_end)
-
-        if df_ua.empty:
-            st.info("No data for selected filters.")
+        agg = (
+            df_res.groupby("resource_type")
+            .agg(
+                avg_metric=(mcol, "mean"),
+                avg_cpu=("usage_cpu", "mean"),
+                avg_storage=("usage_storage", "mean"),
+                avg_users=("users_active", "mean"),
+                records=("resource_type", "count"),
+            )
+            .reset_index()
+        )
+        if agg.empty:
+            st.warning("No data for selected filters.")
         else:
-            c1, c2 = st.columns(2)
+            fig = px.bar(
+                agg.sort_values("avg_metric", ascending=False),
+                x="resource_type",
+                y="avg_metric",
+                title=f"{metric_label} by resource type",
+            )
+            fig.update_layout(height=420, xaxis_title="", margin=dict(l=10, r=10, t=40, b=80))
+            st.plotly_chart(fig, width="stretch")
+
+            make_download_button(
+                agg,
+                label="⬇️ Download resource summary",
+                filename="resource_summary.csv",
+                key="res_download",
+            )
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+# -----------------------------------------------------------------------------
+# PAGE: USER ACTIVITY (ENHANCED)
+# -----------------------------------------------------------------------------
+elif active_page == "User Activity":
+    st.markdown('<div class="section-card">', unsafe_allow_html=True)
+    st.markdown("### 👥 User Activity & Engagement")
+
+    df_raw = load_raw_data()
+    if df_raw.empty:
+        st.info("No data available.")
+        st.markdown("</div>", unsafe_allow_html=True)
+    else:
+        df = df_raw.copy()
+        df["date"] = pd.to_datetime(df["date"])
+
+        # ----- Filter & controls (simple window, not explicit range) -----
+        fc1, fc2, fc3 = st.columns(3)
+        with fc1:
+            regions = st.multiselect(
+                "Regions",
+                options=sorted(df["region"].unique().tolist()),
+                default=sorted(df["region"].unique().tolist()),
+                key="ua_regions",
+            )
+        with fc2:
+            resources = st.multiselect(
+                "Resource Types",
+                options=sorted(df["resource_type"].unique().tolist()),
+                default=sorted(df["resource_type"].unique().tolist()),
+                key="ua_resources",
+            )
+        with fc3:
+            window = st.selectbox(
+                "Time Window",
+                ["All data", "Last 30 days", "Last 90 days", "Last 180 days"],
+                key="ua_window",
+            )
+
+        if regions:
+            df = df[df["region"].isin(regions)]
+        if resources:
+            df = df[df["resource_type"].isin(resources)]
+
+        if window != "All data":
+            days = int(window.split()[1])
+            max_date = df["date"].max()
+            cutoff = max_date - timedelta(days=days)
+            df = df[df["date"] >= cutoff]
+
+        if df.empty:
+            st.warning("No user activity data for selected filters.")
+            st.markdown("</div>", unsafe_allow_html=True)
+        else:
+            # ----- KPIs row -----
+            k1, k2, k3, k4 = st.columns(4)
+            daily_users = df.groupby("date")["users_active"].sum()
+            peak_day = daily_users.idxmax()
+            peak_val = daily_users.max()
+            avg_users = daily_users.mean()
+
+            with k1:
+                st.markdown('<div class="metric-pill">', unsafe_allow_html=True)
+                st.markdown("<h4>Total User Events</h4>", unsafe_allow_html=True)
+                st.markdown(
+                    f"<h2>{int(df['users_active'].sum()):,}</h2>",
+                    unsafe_allow_html=True,
+                )
+                st.markdown(
+                    "<small>Sum across all days & regions</small>",
+                    unsafe_allow_html=True,
+                )
+                st.markdown("</div>", unsafe_allow_html=True)
+
+            with k2:
+                st.markdown('<div class="metric-pill">', unsafe_allow_html=True)
+                st.markdown("<h4>Peak Day</h4>", unsafe_allow_html=True)
+                st.markdown(
+                    f"<h2>{peak_day.date().isoformat()}</h2>",
+                    unsafe_allow_html=True,
+                )
+                st.markdown(
+                    f"<small>{int(peak_val):,} active users</small>",
+                    unsafe_allow_html=True,
+                )
+                st.markdown("</div>", unsafe_allow_html=True)
+
+            with k3:
+                st.markdown('<div class="metric-pill">', unsafe_allow_html=True)
+                st.markdown("<h4>Avg Daily Users</h4>", unsafe_allow_html=True)
+                st.markdown(
+                    f"<h2>{int(avg_users):,}</h2>",
+                    unsafe_allow_html=True,
+                )
+                st.markdown(
+                    "<small>Daily mean (filtered slice)</small>",
+                    unsafe_allow_html=True,
+                )
+                st.markdown("</div>", unsafe_allow_html=True)
+
+            with k4:
+                df["weekday"] = df["date"].dt.weekday
+                weekday_mean = df[df["weekday"] < 5]["users_active"].mean()
+                weekend_mean = df[df["weekday"] >= 5]["users_active"].mean()
+                change = (
+                    (weekend_mean - weekday_mean) / weekday_mean * 100
+                    if weekday_mean > 0
+                    else 0
+                )
+                st.markdown('<div class="metric-pill">', unsafe_allow_html=True)
+                st.markdown("<h4>Weekend vs Weekday</h4>", unsafe_allow_html=True)
+                st.markdown(
+                    f"<h2>{change:+.1f}%</h2>",
+                    unsafe_allow_html=True,
+                )
+                st.markdown(
+                    "<small>Weekend activity vs weekdays</small>",
+                    unsafe_allow_html=True,
+                )
+                st.markdown("</div>", unsafe_allow_html=True)
+
+            st.markdown("")
+
+            # ----- Charts row -----
+            c1, c2 = st.columns([1.6, 1.4])
+
             with c1:
-                fig = px.line(df_ua, x="date", y="users_active", color="region", title="Active users over time")
-                fig.update_layout(height=360, margin=dict(l=0, r=0, t=30, b=0))
-                st.plotly_chart(fig, width="stretch")
+                # User trend (line)
+                trend = (
+                    df.groupby("date")["users_active"]
+                    .sum()
+                    .reset_index()
+                    .sort_values("date")
+                )
+                fig1 = px.area(
+                    trend,
+                    x="date",
+                    y="users_active",
+                    title="Daily Active Users",
+                )
+                fig1.update_layout(height=380, margin=dict(l=10, r=10, t=40, b=10))
+                st.plotly_chart(fig1, width="stretch")
+
             with c2:
-                fig = px.scatter(
-                    df_ua,
+                # Top regions by avg users (bar)
+                reg_users = (
+                    df.groupby("region")["users_active"]
+                    .mean()
+                    .reset_index()
+                    .sort_values("users_active", ascending=False)
+                    .head(7)
+                )
+                fig2 = px.bar(
+                    reg_users,
+                    x="users_active",
+                    y="region",
+                    orientation="h",
+                    title="Top Regions by Avg Users",
+                )
+                fig2.update_layout(height=380, margin=dict(l=10, r=10, t=40, b=10))
+                st.plotly_chart(fig2, width="stretch")
+
+            st.markdown("")
+
+            # ----- Engagement vs Load (scatter) + spikes table -----
+            lc1, lc2 = st.columns([1.4, 1.6])
+
+            with lc1:
+                fig3 = px.scatter(
+                    df,
                     x="users_active",
                     y="usage_cpu",
                     size="usage_storage",
                     color="region",
-                    labels={"users_active": "Active users", "usage_cpu": "CPU (%)"},
+                    hover_data=["date", "resource_type"],
                     title="Users vs CPU vs Storage",
                 )
-                fig.update_layout(height=360, margin=dict(l=0, r=0, t=30, b=0))
-                st.plotly_chart(fig, width="stretch")
+                fig3.update_layout(height=380, margin=dict(l=10, r=10, t=40, b=10))
+                st.plotly_chart(fig3, width="stretch")
+
+            with lc2:
+                st.write("#### Top User Spikes")
+                spikes = (
+                    df.sort_values("users_active", ascending=False)
+                    .head(8)[["date", "region", "resource_type", "users_active", "usage_cpu"]]
+                    .copy()
+                )
+                spikes["date"] = spikes["date"].dt.date
+                st.dataframe(spikes, width="stretch", height=260)
+                make_download_button(
+                    spikes,
+                    label="⬇️ Download spike events",
+                    filename="user_spikes.csv",
+                    key="ua_spikes_dl",
+                )
+
+            # Extra: download filtered slice
+            make_download_button(
+                df.drop(columns=["weekday"], errors="ignore"),
+                label="⬇️ Download filtered user activity slice",
+                filename="user_activity_filtered.csv",
+                key="ua_filtered_dl",
+            )
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
 
 # -----------------------------------------------------------------------------
-# PAGE: FORECASTING (Milestone 3 + 4)
+# PAGE: FORECASTING
 # -----------------------------------------------------------------------------
-elif current_page == "Forecasting":
-    st.subheader("🤖 Forecast Dashboard")
+elif active_page == "Forecasting":
+    st.markdown('<div class="section-card">', unsafe_allow_html=True)
+    st.markdown("### 🤖 Forecast Dashboard")
 
-    df = raw_df  # for defaults
-    metric_map = {"CPU (%)": "cpu", "Storage (GB)": "storage", "Active users": "users"}
+    df_raw = load_raw_data()
+    if df_raw.empty:
+        st.info("Need raw data to drive filters & context.")
+        st.markdown("</div>", unsafe_allow_html=True)
+    else:
+        regions = sorted(df_raw["region"].unique().tolist())
+        resources = sorted(df_raw["resource_type"].unique().tolist())
 
-    # Build region/service options from filters or data
-    regions_list = filters_meta.get("regions") or (
-        sorted(df["region"].dropna().unique()) if "region" in df.columns and not df.empty else []
-    )
-    service_list = filters_meta.get("resource_types") or (
-        sorted(df["resource_type"].dropna().unique()) if "resource_type" in df.columns and not df.empty else []
-    )
-
-    default_region = regions_list[0] if regions_list else "East US"
-    default_service = service_list[0] if service_list else "Compute"
-
-    c1, c2, c3, c4 = st.columns(4)
-    with c1:
-        metric_label = st.selectbox("Metric", list(metric_map.keys()), key="forecast_metric")
-        metric_key = metric_map[metric_label]
-    with c2:
-        model = st.selectbox("Model", ["best", "arima", "xgboost", "lstm"], key="forecast_model")
-    with c3:
-        horizon_label = st.selectbox("Horizon", ["7 days", "10 days", "30 days"], key="forecast_horizon")
-        horizon = int(horizon_label.split()[0])
-    with c4:
-        region = st.selectbox("Region", options=regions_list or [default_region], index=0, key="forecast_region")
-
-    service = st.selectbox(
-        "Service / Resource type",
-        options=service_list or [default_service],
-        index=0,
-        key="forecast_service",
-    )
-
-    if st.button("Get forecast", key="btn_get_forecast"):
-        params = {
-            "metric": metric_key,
-            "model": model,
-            "region": region,
-            "service": service,
-            "horizon": horizon,
+        col1, col2, col3, col4 = st.columns(4)
+        metric_map = {
+            "CPU Usage (%)": "cpu",
+            "Storage Usage (GB)": "storage",
+            "Active Users": "users",
         }
-        data = api_get("forecast", params)
-        if not data:
-            st.warning("No forecast returned from backend.")
-        else:
-            df_f = pd.DataFrame(data)
-            if "date" not in df_f or "forecast_value" not in df_f:
-                st.error("Unexpected forecast format from backend.")
-            else:
-                df_f["date"] = pd.to_datetime(df_f["date"])
+        with col1:
+            metric_label = st.selectbox(
+                "Metric",
+                list(metric_map.keys()),
+                key="fc_metric",
+            )
+        metric_key = metric_map[metric_label]
+        with col2:
+            model = st.selectbox(
+                "Model",
+                ["best", "arima", "xgboost", "lstm"],
+                key="fc_model",
+            )
+        with col3:
+            region = st.selectbox(
+                "Region",
+                regions,
+                key="fc_region",
+            )
+        with col4:
+            service = st.selectbox(
+                "Service / Resource Type",
+                resources,
+                key="fc_resource",
+            )
 
-                # Forecast line with optional actual + CI
+        hcol1, hcol2 = st.columns([1.2, 0.8])
+        with hcol1:
+            horizon = st.slider(
+                "Forecast horizon (days)",
+                min_value=7,
+                max_value=60,
+                value=30,
+                step=1,
+                key="fc_horizon",
+            )
+        with hcol2:
+            st.write("")
+            run = st.button("📡 Run Forecast", key="fc_run")
+
+        if run:
+            params = {
+                "metric": metric_key,
+                "model": model,
+                "region": region,
+                "service": service,
+                "horizon": horizon,
+            }
+            data = fetch_api("forecast", params=params)
+            if not data:
+                st.warning("No forecast data returned by the backend.")
+            else:
+                df_fc = pd.DataFrame(data)
+                if "date" in df_fc.columns:
+                    df_fc["date"] = pd.to_datetime(df_fc["date"])
+
+                # Forecast line chart
                 fig = go.Figure()
-                if "actual_value" in df_f and df_f["actual_value"].notna().any():
+                if "actual_value" in df_fc.columns:
                     fig.add_trace(
                         go.Scatter(
-                            x=df_f["date"],
-                            y=df_f["actual_value"],
-                            mode="lines",
+                            x=df_fc["date"],
+                            y=df_fc["actual_value"],
+                            mode="lines+markers",
                             name="Actual",
-                            line=dict(color="#22c55e", width=2),
                         )
                     )
                 fig.add_trace(
                     go.Scatter(
-                        x=df_f["date"],
-                        y=df_f["forecast_value"],
-                        mode="lines",
+                        x=df_fc["date"],
+                        y=df_fc["forecast_value"],
+                        mode="lines+markers",
                         name="Forecast",
-                        line=dict(color="#38bdf8", width=2),
                     )
                 )
-                if "lower_ci" in df_f and "upper_ci" in df_f:
+                if "lower_ci" in df_fc.columns and "upper_ci" in df_fc.columns:
                     fig.add_trace(
                         go.Scatter(
-                            x=pd.concat([df_f["date"], df_f["date"][::-1]]),
-                            y=pd.concat([df_f["upper_ci"], df_f["lower_ci"][::-1]]),
+                            x=pd.concat([df_fc["date"], df_fc["date"][::-1]]),
+                            y=pd.concat([df_fc["upper_ci"], df_fc["lower_ci"][::-1]]),
                             fill="toself",
-                            fillcolor="rgba(56,189,248,0.2)",
+                            fillcolor="rgba(56,189,248,0.1)",
                             line=dict(color="rgba(0,0,0,0)"),
                             hoverinfo="skip",
+                            showlegend=True,
                             name="Confidence band",
                         )
                     )
                 fig.update_layout(
+                    title=f"{metric_label} forecast for {region} – {service}",
                     height=420,
-                    margin=dict(l=0, r=0, t=40, b=0),
-                    yaxis_title=metric_label,
-                    title=f"{metric_label} forecast · {region} · {service} · {model.upper()}",
+                    margin=dict(l=10, r=10, t=40, b=10),
                 )
                 st.plotly_chart(fig, width="stretch")
 
-                # Download forecast CSV
-                csv_forecast = df_f.to_csv(index=False).encode("utf-8")
-                st.download_button(
-                    "Download forecast CSV",
-                    data=csv_forecast,
-                    file_name=f"forecast_{metric_key}_{model}_{horizon}d.csv",
-                    mime="text/csv",
-                    key="dl_forecast",
+                make_download_button(
+                    df_fc,
+                    label="⬇️ Download forecast as CSV",
+                    filename="forecast_output.csv",
+                    key="fc_dl",
                 )
 
-                st.markdown("---")
-                st.subheader("📊 Capacity Snapshot & Model Health")
+    st.markdown("</div>", unsafe_allow_html=True)
 
-                col_snap1, col_snap2 = st.columns(2)
+# -----------------------------------------------------------------------------
+# PAGE: CAPACITY PLANNING  (with frontend fallback)
+# -----------------------------------------------------------------------------
+elif active_page == "Capacity Planning":
+    st.markdown('<div class="section-card">', unsafe_allow_html=True)
+    st.markdown("### 🏗️ Capacity Planning & Recommendations")
 
-                # Capacity snapshot (using capacity-planning API for same region/service)
-                with col_snap1:
-                    st.markdown("**Capacity vs Forecast**")
-                    cp_params = {"region": region, "service": service, "horizon": horizon}
-                    cp_data = api_get("capacity-planning", cp_params)
-                    if cp_data:
-                        df_cp = pd.DataFrame(cp_data)
-                        if not df_cp.empty:
-                            df_cp["label"] = df_cp["region"].astype(str) + " – " + df_cp["service"].astype(str)
-                            fig_cp = go.Figure()
-                            if "forecast_demand" in df_cp:
-                                fig_cp.add_trace(
-                                    go.Bar(
-                                        x=df_cp["label"],
-                                        y=df_cp["forecast_demand"],
-                                        name="Forecast demand",
-                                    )
-                                )
-                            if "available_capacity" in df_cp:
-                                fig_cp.add_trace(
-                                    go.Bar(
-                                        x=df_cp["label"],
-                                        y=df_cp["available_capacity"],
-                                        name="Available capacity",
-                                    )
-                                )
-                            fig_cp.update_layout(
-                                barmode="group",
-                                height=280,
-                                margin=dict(l=0, r=0, t=40, b=0),
-                                xaxis_tickangle=-25,
-                            )
-                            st.plotly_chart(fig_cp, width="stretch")
+    df_raw = load_raw_data()
+    if df_raw.empty:
+        st.info("Need raw data for filters.")
+        st.markdown("</div>", unsafe_allow_html=True)
+    else:
+        regions = ["All regions"] + sorted(df_raw["region"].unique().tolist())
+        resources = sorted(df_raw["resource_type"].unique().tolist())
+
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            region = st.selectbox(
+                "Region",
+                regions,
+                key="cp_region",
+            )
+        with c2:
+            service = st.selectbox(
+                "Service / Resource Type",
+                resources,
+                key="cp_service",
+            )
+        with c3:
+            horizon = st.selectbox(
+                "Horizon (days)",
+                [7, 10, 30],
+                key="cp_horizon",
+            )
+
+        go_btn = st.button("🔎 Load Capacity Plan", key="cp_btn")
+
+        if go_btn:
+            # First try backend API
+            params = {"service": service, "horizon": horizon}
+            if region != "All regions":
+                params["region"] = region
+
+            data = fetch_api("capacity-planning", params=params)
+
+            # If backend not ready -> fallback using raw data (NO visible info message)
+            if not data:
+                df = df_raw.copy()
+                df["date"] = pd.to_datetime(df["date"])
+                # filter by region & service
+                if region != "All regions":
+                    df = df[df["region"] == region]
+                df = df[df["resource_type"] == service]
+
+                if df.empty:
+                    st.warning("No data for selected region/service.")
+                    st.markdown("</div>", unsafe_allow_html=True)
+                else:
+                    max_date = df["date"].max()
+                    cutoff = max_date - timedelta(days=horizon)
+                    df_window = df[df["date"] >= cutoff]
+                    if df_window.empty:
+                        df_window = df
+
+                    rows = []
+                    for r in df_window["region"].unique():
+                        sub = df_window[df_window["region"] == r]
+                        # Use peak CPU as demand index (simple heuristic)
+                        demand = float(sub["usage_cpu"].max())
+                        capacity = demand * 0.9
+                        gap = demand - capacity
+                        ratio = demand / capacity if capacity > 0 else 0
+
+                        if ratio > 1.1:
+                            risk = "high"
+                        elif ratio > 1.0:
+                            risk = "medium"
                         else:
-                            st.info("No capacity snapshot for selected inputs.")
-                    else:
-                        st.info("Capacity-planning API returned no data.")
+                            risk = "low"
 
-                # Model monitoring snapshot (no separate page, embedded here)
-                with col_snap2:
-                    st.markdown("**Model Monitoring (Accuracy)**")
-                    mon = api_get("monitoring", {"metric": metric_key})
-                    if mon:
-                        acc = float(mon.get("current_accuracy", 0.0))
-                        drift = float(mon.get("drift", 0.0))
-                        last_retrain = mon.get("last_retrain", "—")
-
-                        if acc >= 85:
-                            light = "🟢 Stable"
-                        elif acc >= 70:
-                            light = "🟡 Caution"
-                        else:
-                            light = "🔴 Retrain needed"
-
-                        st.markdown(
-                            f"""
-                            <div class="card kpi">
-                              <div class="kpi-label">Forecast Health</div>
-                              <div class="kpi-value">{light}</div>
-                              <div class="kpi-sub">Accuracy: {acc:.1f}%  · Drift: {drift:+.1f}%  · Last retrain: {last_retrain}</div>
-                            </div>
-                            """,
-                            unsafe_allow_html=True,
+                        rec = f"+{gap:.1f} units" if gap > 0 else f"{gap:.1f} units"
+                        rows.append(
+                            {
+                                "region": r,
+                                "service": service,
+                                "forecast_demand": round(demand, 1),
+                                "available_capacity": round(capacity, 1),
+                                "recommended_adjustment": rec,
+                                "risk_level": risk,
+                            }
                         )
 
-                        df_mon = pd.DataFrame(mon.get("accuracy_trend") or [])
-                        if not df_mon.empty and "date" in df_mon and "value" in df_mon:
-                            df_mon["date"] = pd.to_datetime(df_mon["date"])
-                            fig_mon = px.line(df_mon, x="date", y="value", labels={"value": "Accuracy (%)"})
-                            fig_mon.update_layout(height=220, margin=dict(l=0, r=0, t=30, b=0))
-                            st.plotly_chart(fig_mon, width="stretch")
-                    else:
-                        st.info("Monitoring API not available for this metric.")
-
-# -----------------------------------------------------------------------------
-# PAGE: CAPACITY PLANNING (Milestone 4)
-# -----------------------------------------------------------------------------
-elif current_page == "Capacity Planning":
-    st.subheader("🏗 Capacity Planning & Recommendations")
-
-    # Dropdowns for region & service instead of typing
-    regions_list = filters_meta.get("regions") or (
-        sorted(raw_df["region"].dropna().unique()) if "region" in raw_df.columns and not raw_df.empty else []
-    )
-    service_list = filters_meta.get("resource_types") or (
-        sorted(raw_df["resource_type"].dropna().unique()) if "resource_type" in raw_df.columns and not raw_df.empty else []
-    )
-
-    default_region_label = "All regions"
-    region_options = [default_region_label] + regions_list if regions_list else [default_region_label]
-
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        region_cp_label = st.selectbox("Region", options=region_options, key="cap_region")
-        region_cp = None if region_cp_label == default_region_label else region_cp_label
-    with c2:
-        if service_list:
-            service_cp = st.selectbox("Service / Resource type", options=service_list, key="cap_service")
-        else:
-            service_cp = st.selectbox(
-                "Service / Resource type",
-                options=["Compute", "Storage"],
-                key="cap_service_fallback",
-            )
-    with c3:
-        horizon_cp = st.selectbox("Horizon (days)", [7, 10, 30], index=2, key="cap_horizon")
-
-    params_cp = {
-        "region": region_cp,
-        "service": service_cp,
-        "horizon": horizon_cp,
-    }
-    data_cp = api_get("capacity-planning", params_cp)
-
-    if not data_cp:
-        st.info(
-            "Capacity planning data is not available from backend yet. "
-            "Ask backend team to expose `/api/capacity-planning` with forecast_demand & available_capacity."
-        )
-    else:
-        df_cp = pd.DataFrame(data_cp)
-        if df_cp.empty:
-            st.info("Capacity planning endpoint returned no rows for these filters.")
-        else:
-            df_cp["label"] = df_cp["region"].astype(str) + " – " + df_cp["service"].astype(str)
-
-            st.markdown("### 📊 Capacity vs Forecast")
-
-            fig = go.Figure()
-            if "forecast_demand" in df_cp:
-                fig.add_trace(
-                    go.Bar(
-                        x=df_cp["label"],
-                        y=df_cp["forecast_demand"],
-                        name="Forecast demand",
-                    )
-                )
-            if "available_capacity" in df_cp:
-                fig.add_trace(
-                    go.Bar(
-                        x=df_cp["label"],
-                        y=df_cp["available_capacity"],
-                        name="Available capacity",
-                    )
-                )
-            fig.update_layout(
-                barmode="group",
-                height=420,
-                margin=dict(l=0, r=0, t=40, b=0),
-                xaxis_tickangle=-25,
-            )
-            st.plotly_chart(fig, width="stretch")
-
-            st.markdown("### 📌 Recommendations Panel")
-
-            for _, row in df_cp.iterrows():
-                risk = row.get("risk_level", "unknown")
-                icon = {"high": "🔴", "medium": "🟡", "low": "🟢"}.get(risk, "⚪")
-                rec = row.get("recommended_adjustment", "0")
-                region_txt = row.get("region", "?")
-                service_txt = row.get("service", "?")
-                st.write(
-                    f"{icon} **{region_txt} – {service_txt}** → adjust capacity by **{rec}**"
-                )
-
-            st.markdown("---")
-            st.subheader("📄 Capacity Report Download")
-
-            csv_cp = df_cp.to_csv(index=False).encode("utf-8")
-            st.download_button(
-                "Download capacity plan CSV",
-                data=csv_cp,
-                file_name=f"capacity_plan_{service_cp}_{horizon_cp}d.csv",
-                mime="text/csv",
-                key="dl_capacity",
-            )
-
-# -----------------------------------------------------------------------------
-# PAGE: MULTI-REGION CAPACITY COMPARISON (ADD-ON 1)
-# -----------------------------------------------------------------------------
-elif current_page == "Multi-Region Compare":
-    st.subheader("🛰 Multi-Region Capacity Comparison")
-
-    if raw_df.empty:
-        st.info("No raw data available for comparison.")
-    else:
-        regions_all = filters_meta.get("regions") or sorted(raw_df["region"].dropna().unique())
-        service_list = filters_meta.get("resource_types") or (
-            sorted(raw_df["resource_type"].dropna().unique()) if "resource_type" in raw_df.columns else []
-        )
-
-        col_top_1, col_top_2, col_top_3 = st.columns(3)
-        with col_top_1:
-            selected_regions = st.multiselect(
-                "Select regions (2+ recommended)",
-                options=regions_all,
-                default=regions_all[:2] if len(regions_all) >= 2 else regions_all,
-                key="multi_regions",
-            )
-        with col_top_2:
-            service = st.selectbox(
-                "Service / Resource type (for forecast)",
-                options=service_list or ["Compute", "Storage"],
-                key="multi_service",
-            )
-        with col_top_3:
-            horizon_multi = st.selectbox("Forecast horizon", [7, 10, 30], index=0, key="multi_horizon")
-
-        if not selected_regions or len(selected_regions) < 1:
-            st.info("Please select at least one region.")
-        else:
-            df_sel = raw_df[raw_df["region"].isin(selected_regions)].copy()
-            if df_sel.empty:
-                st.info("No data available for the selected regions.")
+                    df_cp = pd.DataFrame(rows)
             else:
-                # ------- Radar chart for average metrics -------
-                st.markdown("### 🕸 Radar Chart – Average Metrics per Region")
+                df_cp = pd.DataFrame(data)
 
-                radar_stats = (
-                    df_sel.groupby("region")
+            if df_cp is None or df_cp.empty:
+                st.warning("No capacity planning data could be generated.")
+            else:
+                # Chart
+                if all(col in df_cp.columns for col in ["forecast_demand", "available_capacity"]):
+                    fig = go.Figure()
+                    fig.add_trace(
+                        go.Bar(
+                            x=df_cp["region"],
+                            y=df_cp["forecast_demand"],
+                            name="Forecast Demand",
+                        )
+                    )
+                    fig.add_trace(
+                        go.Bar(
+                            x=df_cp["region"],
+                            y=df_cp["available_capacity"],
+                            name="Available Capacity",
+                        )
+                    )
+                    fig.update_layout(
+                        barmode="group",
+                        title=f"Forecast vs Capacity – {service}",
+                        height=420,
+                        margin=dict(l=10, r=10, t=40, b=10),
+                    )
+                    st.plotly_chart(fig, width="stretch")
+
+                # Recommendations panel
+                st.write("#### Recommendations")
+                for _, row in df_cp.iterrows():
+                    risk_level = str(row.get("risk_level", "unknown")).lower()
+                    color_emoji = "🟢"
+                    if risk_level == "high":
+                        color_emoji = "🔴"
+                    elif risk_level == "medium":
+                        color_emoji = "🟡"
+                    st.markdown(
+                        f"- {color_emoji} **{row['region']} – {row['service']}** → "
+                        f"{row.get('recommended_adjustment', 'No recommendation')}"
+                    )
+
+                make_download_button(
+                    df_cp,
+                    label="⬇️ Download capacity plan as CSV",
+                    filename="capacity_plan.csv",
+                    key="cp_dl",
+                )
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
+# -----------------------------------------------------------------------------
+# PAGE: MULTI-REGION COMPARE  (radar now reacts to metric)
+# -----------------------------------------------------------------------------
+elif active_page == "Multi-Region Compare":
+    st.markdown('<div class="section-card">', unsafe_allow_html=True)
+    st.markdown("### 🧭 Multi-Region Capacity Comparison")
+
+    df_raw = load_raw_data()
+    if df_raw.empty:
+        st.info("No data available.")
+    else:
+        df = df_raw.copy()
+        df["date"] = pd.to_datetime(df["date"])
+
+        m1, m2, m3 = st.columns(3)
+        with m1:
+            regions = st.multiselect(
+                "Select regions (2+ recommended)",
+                options=sorted(df["region"].unique().tolist()),
+                default=sorted(df["region"].unique().tolist())[:3],
+                key="mrc_regions",
+            )
+        with m2:
+            service = st.selectbox(
+                "Service / Resource Type",
+                sorted(df["resource_type"].unique().tolist()),
+                key="mrc_service",
+            )
+        with m3:
+            metric_label = st.selectbox(
+                "Metric",
+                ["CPU Usage (%)", "Storage Usage (GB)", "Active Users"],
+                key="mrc_metric",
+            )
+        metric_map_raw = {
+            "CPU Usage (%)": "usage_cpu",
+            "Storage Usage (GB)": "usage_storage",
+            "Active Users": "users_active",
+        }
+        metric_col = metric_map_raw[metric_label]
+
+        if not regions:
+            st.warning("Select at least one region.")
+        else:
+            df = df[df["region"].isin(regions) & (df["resource_type"] == service)]
+
+            if df.empty:
+                st.warning("No data for selected combination.")
+            else:
+                # Average metrics per region
+                agg = (
+                    df.groupby("region")
                     .agg(
                         avg_cpu=("usage_cpu", "mean"),
                         avg_storage=("usage_storage", "mean"),
@@ -966,323 +1374,190 @@ elif current_page == "Multi-Region Compare":
                     .reset_index()
                 )
 
-                if len(radar_stats) >= 1:
-                    categories = ["CPU", "Storage", "Users"]
-                    fig_radar = go.Figure()
-                    for _, row in radar_stats.iterrows():
-                        fig_radar.add_trace(
-                            go.Scatterpolar(
-                                r=[row["avg_cpu"], row["avg_storage"], row["avg_users"]],
-                                theta=categories,
-                                fill="toself",
-                                name=row["region"],
-                            )
-                        )
-                    fig_radar.update_layout(
-                        polar=dict(radialaxis=dict(visible=True)),
-                        showlegend=True,
-                        height=430,
-                        margin=dict(l=0, r=0, t=40, b=0),
-                    )
-                    st.plotly_chart(fig_radar, width="stretch")
-                else:
-                    st.info("Not enough data for radar chart.")
-
-                st.markdown("---")
-                st.markdown("### 📈 Region-wise Time Series")
-
-                metric_map = {
-                    "CPU (%)": "usage_cpu",
-                    "Storage (GB)": "usage_storage",
-                    "Active users": "users_active",
+                # Radar now depends on selected metric
+                radar_metric_map = {
+                    "CPU Usage (%)": "avg_cpu",
+                    "Storage Usage (GB)": "avg_storage",
+                    "Active Users": "avg_users",
                 }
-                col_m1, col_m2 = st.columns(2)
-                with col_m1:
-                    metric_label_multi = st.selectbox(
-                        "Metric", list(metric_map.keys()), key="multi_metric"
-                    )
-                    metric_col_multi = metric_map[metric_label_multi]
-                with col_m2:
-                    window_multi = st.selectbox(
-                        "Time window",
-                        ["All", "Last 30 days", "Last 90 days"],
-                        key="multi_window",
-                    )
+                rcol = radar_metric_map[metric_label]
+                radar_df = agg[["region", rcol]].rename(columns={rcol: "value"})
 
+                fig_radar = px.line_polar(
+                    radar_df,
+                    r="value",
+                    theta="region",
+                    line_close=True,
+                    title=f"{metric_label} – multi-region comparison",
+                )
+                fig_radar.update_traces(fill="toself")
+                fig_radar.update_layout(height=420, margin=dict(l=10, r=10, t=40, b=10))
+                st.plotly_chart(fig_radar, width="stretch")
+
+                # Time-series compare
                 ts = (
-                    df_sel.groupby(["date", "region"])[metric_col_multi]
+                    df.groupby(["date", "region"])[metric_col]
                     .mean()
                     .reset_index()
                     .sort_values("date")
                 )
-
-                if window_multi != "All" and not ts.empty:
-                    days = int(window_multi.split()[1])
-                    ts = ts[ts["date"] >= ts["date"].max() - pd.Timedelta(days=days)]
-
-                if ts.empty:
-                    st.info("No time-series data after filtering.")
-                else:
-                    fig_ts = px.line(
-                        ts,
-                        x="date",
-                        y=metric_col_multi,
-                        color="region",
-                        title=f"{metric_label_multi} across regions",
-                    )
-                    fig_ts.update_layout(height=380, margin=dict(l=0, r=0, t=30, b=0))
-                    st.plotly_chart(fig_ts, width="stretch")
-
-                st.markdown("---")
-                st.markdown("### 🕒 Peak Day & Simple Recommendations")
-
-                peak_rows: List[Dict[str, Any]] = []
-                for r in selected_regions:
-                    df_r = df_sel[df_sel["region"] == r]
-                    if df_r.empty:
-                        continue
-                    # Peak "hour" is not available (daily data), so we use peak DATE.
-                    idx = df_r["usage_cpu"].idxmax()
-                    row = df_r.loc[idx]
-                    avg_cpu_r = df_r["usage_cpu"].mean()
-                    peak_cpu_r = row["usage_cpu"]
-                    ratio = peak_cpu_r / avg_cpu_r if avg_cpu_r > 0 else 0
-                    if ratio > 1.3:
-                        rec = "⚠ Add headroom during peak days."
-                    elif ratio < 1.05:
-                        rec = "✅ Stable usage profile."
-                    else:
-                        rec = "🟡 Moderate spikes, monitor capacity."
-
-                    peak_rows.append(
-                        {
-                            "Region": r,
-                            "Peak day": row["date"].date(),
-                            "Peak CPU (%)": round(peak_cpu_r, 1),
-                            "Average CPU (%)": round(avg_cpu_r, 1),
-                            "Recommendation": rec,
-                        }
-                    )
-
-                if peak_rows:
-                    df_peak = pd.DataFrame(peak_rows)
-                    st.dataframe(df_peak, height=260)
-                else:
-                    st.info("No peak-day information computed.")
-
-                # Forecast comparison (optional, multi-region with one metric)
-                st.markdown("---")
-                st.markdown("### 🔮 Multi-region Forecast (same service & metric)")
-
-                metric_map_fore = {"CPU (%)": "cpu", "Storage (GB)": "storage", "Active users": "users"}
-                met_label_f = st.selectbox(
-                    "Forecast metric",
-                    list(metric_map_fore.keys()),
-                    index=0,
-                    key="multi_fore_metric",
+                fig_ts = px.line(
+                    ts,
+                    x="date",
+                    y=metric_col,
+                    color="region",
+                    title=f"{metric_label} – time series comparison",
                 )
-                met_key_f = metric_map_fore[met_label_f]
+                fig_ts.update_layout(height=420, margin=dict(l=10, r=10, t=40, b=10))
+                st.plotly_chart(fig_ts, width="stretch")
 
-                if st.button("Load multi-region forecast", key="btn_multi_forecast"):
-                    fig_multi_fore = go.Figure()
-                    any_ok = False
-                    for r in selected_regions:
-                        params = {
-                            "metric": met_key_f,
-                            "model": "best",
-                            "region": r,
-                            "service": service,
-                            "horizon": horizon_multi,
-                        }
-                        data_fore = api_get("forecast", params)
-                        if not data_fore:
-                            continue
-                        df_fore_r = pd.DataFrame(data_fore)
-                        if "date" not in df_fore_r or "forecast_value" not in df_fore_r:
-                            continue
-                        df_fore_r["date"] = pd.to_datetime(df_fore_r["date"])
-                        fig_multi_fore.add_trace(
-                            go.Scatter(
-                                x=df_fore_r["date"],
-                                y=df_fore_r["forecast_value"],
-                                mode="lines",
-                                name=r,
-                            )
-                        )
-                        any_ok = True
-                    if any_ok:
-                        fig_multi_fore.update_layout(
-                            height=420,
-                            margin=dict(l=0, r=0, t=40, b=0),
-                            yaxis_title=met_label_f,
-                            title=f"{met_label_f} forecast comparison · service={service}",
-                        )
-                        st.plotly_chart(fig_multi_fore, width="stretch")
-                    else:
-                        st.info("No forecast data returned for selected regions.")
+                make_download_button(
+                    df,
+                    label="⬇️ Download multi-region slice",
+                    filename="multi_region_slice.csv",
+                    key="mrc_dl",
+                )
+
+    st.markdown("</div>", unsafe_allow_html=True)
 
 # -----------------------------------------------------------------------------
-# PAGE: PREDICTION ALERTS (ADD-ON 2)
+# PAGE: ALERTS (Prediction Alerts)
 # -----------------------------------------------------------------------------
-elif current_page == "Alerts":
-    st.subheader("🔔 Prediction Alerts")
+elif active_page == "Alerts":
+    st.markdown('<div class="section-card">', unsafe_allow_html=True)
+    st.markdown("### 🚨 Prediction Alerts")
 
-    st.markdown(
-        """
-<div class="info-strip">
-Configure thresholds and see which regions/services are at risk in the next 7 days.
-</div>
-""",
-        unsafe_allow_html=True,
-    )
-
-    if raw_df.empty:
-        st.info("No data available yet to generate alerts.")
+    df_raw = load_raw_data()
+    if df_raw.empty:
+        st.info("No data available.")
     else:
-        metric_map_alert = {"CPU (%)": "cpu", "Storage (GB)": "storage", "Active users": "users"}
+        regions = ["All regions"] + sorted(df_raw["region"].unique().tolist())
+        resources = sorted(df_raw["resource_type"].unique().tolist())
 
-        regions_list = filters_meta.get("regions") or (
-            sorted(raw_df["region"].dropna().unique()) if "region" in raw_df.columns else []
-        )
-        service_list = filters_meta.get("resource_types") or (
-            sorted(raw_df["resource_type"].dropna().unique()) if "resource_type" in raw_df.columns else []
-        )
+        a1, a2, a3, a4 = st.columns(4)
+        with a1:
+            metric_label = st.selectbox(
+                "Metric",
+                ["CPU Usage (%)", "Storage Usage (GB)", "Active Users"],
+                key="al_metric",
+            )
+        metric_map = {
+            "CPU Usage (%)": "cpu",
+            "Storage Usage (GB)": "storage",
+            "Active Users": "users",
+        }
+        metric_key = metric_map[metric_label]
 
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            metric_label_a = st.selectbox("Alert metric", list(metric_map_alert.keys()), key="alert_metric")
-            metric_key_a = metric_map_alert[metric_label_a]
-        with c2:
-            region_opt = ["All regions"] + regions_list if regions_list else ["All regions"]
-            region_sel = st.selectbox("Region scope", options=region_opt, key="alert_region")
-        with c3:
-            service_sel = st.selectbox(
-                "Service / Resource type",
-                options=service_list or ["Compute", "Storage"],
-                key="alert_service",
+        with a2:
+            region = st.selectbox(
+                "Region scope",
+                regions,
+                key="al_region",
+            )
+        with a3:
+            service = st.selectbox(
+                "Service / Resource Type",
+                resources,
+                key="al_service",
+            )
+        with a4:
+            threshold = st.slider(
+                "Alert threshold",
+                min_value=10,
+                max_value=100,
+                value=80,
+                step=1,
+                key="al_threshold",
             )
 
-        # Choose threshold (for CPU we treat as %, for others raw units)
-        if metric_key_a == "cpu":
-            default_thresh = 80.0
-            max_val = 100.0
-        elif metric_key_a == "storage":
-            default_thresh = float(raw_df["usage_storage"].quantile(0.8)) if "usage_storage" in raw_df else 1000.0
-            max_val = default_thresh * 2
-        else:
-            default_thresh = float(raw_df["users_active"].quantile(0.8)) if "users_active" in raw_df else 1000.0
-            max_val = default_thresh * 2
+        btn = st.button("🔍 Check alerts for next 7 days", key="al_btn")
 
-        threshold = st.slider(
-            "Alert threshold",
-            min_value=0.0,
-            max_value=float(max_val),
-            value=float(default_thresh),
-            step=float(max_val / 50) if max_val > 0 else 1.0,
-            key="alert_threshold",
-        )
+        if btn:
+            # Determine list of regions to query
+            if region == "All regions":
+                region_list = sorted(df_raw["region"].unique().tolist())
+            else:
+                region_list = [region]
 
-        if st.button("Check alerts for next 7 days", key="btn_check_alerts"):
-            regions_to_check = regions_list if region_sel == "All regions" else [region_sel]
-            alert_rows = []
-
-            for r in regions_to_check:
+            rows = []
+            for r in region_list:
                 params = {
-                    "metric": metric_key_a,
+                    "metric": metric_key,
                     "model": "best",
                     "region": r,
-                    "service": service_sel,
+                    "service": service,
                     "horizon": 7,
                 }
-                data_fore = api_get("forecast", params)
-                if not data_fore:
+                data = fetch_api("forecast", params=params)
+                if not data:
                     continue
-                df_fore = pd.DataFrame(data_fore)
-                if "forecast_value" not in df_fore or "date" not in df_fore:
+                df_fc = pd.DataFrame(data)
+                if df_fc.empty or "forecast_value" not in df_fc.columns:
                     continue
-                df_fore["date"] = pd.to_datetime(df_fore["date"])
-                max_pred = df_fore["forecast_value"].max()
-                max_row = df_fore.loc[df_fore["forecast_value"].idxmax()]
-                d_str = max_row["date"].date()
+                df_fc["date"] = pd.to_datetime(df_fc["date"])
+                max_row = df_fc.loc[df_fc["forecast_value"].idxmax()]
+                max_val = max_row["forecast_value"]
+                peak_day = max_row["date"].date()
 
-                if max_pred >= threshold * 1.1:
+                if max_val >= threshold * 1.1:
                     status = "⚠ High risk"
-                elif max_pred >= threshold:
+                elif max_val >= threshold:
                     status = "🟡 Near limit"
                 else:
                     status = "🟢 Safe"
 
-                alert_rows.append(
+                rows.append(
                     {
-                        "Region": r,
-                        "Service": service_sel,
-                        "Metric": metric_label_a,
-                        "Threshold": round(threshold, 2),
-                        "Max forecast (next 7d)": round(float(max_pred), 2),
-                        "Peak day": d_str,
-                        "Status": status,
+                        "region": r,
+                        "service": service,
+                        "metric": metric_label,
+                        "threshold": threshold,
+                        "max_forecast_next_7d": round(max_val, 2),
+                        "peak_day": peak_day,
+                        "status": status,
                     }
                 )
 
-            if not alert_rows:
-                st.info("No forecast data available to compute alerts.")
+            if not rows:
+                st.info("No forecast data available for alert calculation.")
             else:
-                df_alerts = pd.DataFrame(alert_rows)
-                # Show big banner if any high risk
-                if (df_alerts["Status"] == "⚠ High risk").any():
-                    st.markdown(
-                        """
-<div class="warn-strip">
-🚨 One or more regions are forecasted to exceed the configured threshold. Consider increasing capacity or balancing load.
-</div>
-""",
-                        unsafe_allow_html=True,
-                    )
-                elif (df_alerts["Status"] == "🟡 Near limit").any():
-                    st.markdown(
-                        """
-<div class="info-strip">
-⚠ Some regions are close to the configured threshold. Monitor closely.
-</div>
-""",
-                        unsafe_allow_html=True,
-                    )
+                df_alerts = pd.DataFrame(rows)
+
+                # Overall banner
+                if (df_alerts["status"] == "⚠ High risk").any():
+                    st.error("🔴 One or more regions are in **High risk** zone.")
+                elif (df_alerts["status"] == "🟡 Near limit").any():
+                    st.warning("🟡 Some regions are **close to threshold**.")
                 else:
-                    st.markdown(
-                        """
-<div class="info-strip">
-✅ All regions appear safe for the next 7 days under the current threshold.
-</div>
-""",
-                        unsafe_allow_html=True,
+                    st.success("🟢 All regions are currently in safe range.")
+
+                st.dataframe(df_alerts, width="stretch", height=260)
+
+                make_download_button(
+                    df_alerts,
+                    label="⬇️ Download alert table",
+                    filename="prediction_alerts.csv",
+                    key="al_dl",
+                )
+
+                with st.expander("📧 Email Alerts (UI only)"):
+                    email = st.text_input("Notification email", key="al_email")
+                    freq = st.selectbox(
+                        "Alert trigger",
+                        [
+                            "Only when High risk",
+                            "Daily summary",
+                            "Weekly summary",
+                        ],
+                        key="al_freq",
                     )
+                    save = st.button("Save alert preference", key="al_pref_btn")
+                    if save:
+                        if email.strip():
+                            st.success(
+                                f"Alert preference saved for {email}. (In real deployment, backend would send emails using SMTP / Azure Functions.)"
+                            )
+                        else:
+                            st.warning("Please enter a valid email.")
 
-                st.dataframe(df_alerts, height=300)
-
-                csv_alerts = df_alerts.to_csv(index=False).encode("utf-8")
-                st.download_button(
-                    "Download alerts as CSV",
-                    data=csv_alerts,
-                    file_name="prediction_alerts.csv",
-                    mime="text/csv",
-                    key="dl_alerts",
-                )
-
-        st.markdown("---")
-        st.subheader("📧 Email Alert Subscription (UI only)")
-
-        email = st.text_input("Email address for alerts", key="alert_email")
-        freq = st.selectbox(
-            "Alert frequency",
-            ["On high-risk only", "Daily summary", "Weekly summary"],
-            key="alert_freq",
-        )
-
-        if st.button("Save alert preferences", key="btn_save_alerts"):
-            if not email:
-                st.warning("Please enter an email address.")
-            else:
-                # In a full system this would call a backend endpoint that saves the subscription
-                st.success(
-                    f"Alert preferences saved for {email}."
-                )
+    st.markdown("</div>", unsafe_allow_html=True)
